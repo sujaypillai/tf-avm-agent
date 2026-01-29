@@ -1,0 +1,64 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "tf-avm-agent"
+version = "0.1.0"
+description = "An AI agent that generates Terraform code using Azure Verified Modules (AVM)"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+keywords = ["terraform", "azure", "avm", "infrastructure-as-code", "ai-agent"]
+authors = [
+    { name = "TF AVM Agent Team" }
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+    "agent-framework>=0.1.0",
+    "agent-framework-azure-ai>=0.1.0",
+    "azure-identity>=1.15.0",
+    "pydantic>=2.0.0",
+    "jinja2>=3.1.0",
+    "pillow>=10.0.0",
+    "httpx>=0.27.0",
+    "rich>=13.0.0",
+    "typer>=0.12.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "ruff>=0.4.0",
+    "mypy>=1.10.0",
+]
+
+[project.scripts]
+tf-avm-agent = "tf_avm_agent.cli:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tf_avm_agent"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
