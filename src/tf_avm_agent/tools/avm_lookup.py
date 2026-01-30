@@ -100,10 +100,12 @@ def search_avm_modules(
 
     lines = [f"# Search Results for '{query}'\n"]
     for module in results:
+        # Get latest version dynamically
+        latest_version = module.get_latest_version()
         lines.append(f"\n## {module.name}")
         lines.append(f"- **Description**: {module.description}")
         lines.append(f"- **Source**: `{module.source}`")
-        lines.append(f"- **Version**: {module.version}")
+        lines.append(f"- **Version**: {latest_version}")
         lines.append(f"- **Category**: {module.category}")
         lines.append(f"- **Azure Service**: {module.azure_service}")
         if module.aliases:
@@ -116,12 +118,14 @@ def get_avm_module_info(
     service_name: Annotated[
         str, Field(description="The name or alias of the Azure service (e.g., 'virtual_machine', 'vm', 'storage', 'aks')")
     ],
+    fetch_latest: bool = True,
 ) -> str:
     """
     Get detailed information about a specific AVM module.
 
     Args:
         service_name: The name or alias of the service
+        fetch_latest: Whether to fetch the latest version from the registry (default True)
 
     Returns:
         Detailed information about the module including usage examples
@@ -136,6 +140,9 @@ def get_avm_module_info(
             return f"Module '{service_name}' not found. Similar modules: {suggestions}"
         return f"Module '{service_name}' not found. Use list_available_avm_modules() to see all available modules."
 
+    # Get version (latest or fallback)
+    version = module.get_latest_version() if fetch_latest else module.version
+
     lines = [
         f"# {module.name}",
         "",
@@ -143,7 +150,7 @@ def get_avm_module_info(
         "",
         "## Module Details",
         f"- **Source**: `{module.source}`",
-        f"- **Version**: `{module.version}`",
+        f"- **Version**: `{version}`",
         f"- **Category**: {module.category}",
         f"- **Azure Service**: `{module.azure_service}`",
     ]
@@ -176,11 +183,12 @@ def get_avm_module_info(
         for output in module.outputs:
             lines.append(f"- `{output}`")
 
-    # Example configuration
+    # Example configuration with latest version
     if module.example_config:
         lines.append("\n## Example Configuration")
         lines.append("```hcl")
-        lines.append(module.example_config.strip())
+        example = module.get_example_config_with_latest_version() if fetch_latest else module.example_config
+        lines.append(example.strip())
         lines.append("```")
     else:
         # Generate basic example
@@ -188,7 +196,7 @@ def get_avm_module_info(
         lines.append("```hcl")
         lines.append(f'module "{module.name}" {{')
         lines.append(f'  source  = "{module.source}"')
-        lines.append(f'  version = "{module.version}"')
+        lines.append(f'  version = "{version}"')
         lines.append("")
         for var in module.required_variables:
             if var.required:

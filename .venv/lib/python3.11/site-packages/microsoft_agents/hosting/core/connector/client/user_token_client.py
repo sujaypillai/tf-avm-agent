@@ -1,0 +1,325 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
+"""User Token Client for Microsoft Agents."""
+
+import logging
+from typing import Optional
+from aiohttp import ClientSession
+
+from microsoft_agents.hosting.core.connector import UserTokenClientBase
+from microsoft_agents.activity import (
+    TokenOrSignInResourceResponse,
+    TokenResponse,
+    TokenStatus,
+    SignInResource,
+)
+from ..get_product_info import get_product_info
+from ..user_token_base import UserTokenBase
+from ..agent_sign_in_base import AgentSignInBase
+
+logger = logging.getLogger(__name__)
+
+
+class AgentSignIn(AgentSignInBase):
+    """Implementation of agent sign-in operations."""
+
+    def __init__(self, client: ClientSession):
+        self.client = client
+
+    async def get_sign_in_url(
+        self,
+        state: str,
+        code_challenge: Optional[str] = None,
+        emulator_url: Optional[str] = None,
+        final_redirect: Optional[str] = None,
+    ) -> str:
+        """
+        Get sign-in URL.
+
+        :param state: State parameter for OAuth flow.
+        :param code_challenge: Code challenge for PKCE.
+        :param emulator_url: Emulator URL if used.
+        :param final_redirect: Final redirect URL.
+        :return: The sign-in URL.
+        """
+        params = {"state": state}
+        if code_challenge:
+            params["codeChallenge"] = code_challenge
+        if emulator_url:
+            params["emulatorUrl"] = emulator_url
+        if final_redirect:
+            params["finalRedirect"] = final_redirect
+
+        logger.info(
+            "AgentSignIn.get_sign_in_url(): Getting sign-in URL with params: %s",
+            params,
+        )
+        async with self.client.get(
+            "api/agentsignin/getSignInUrl", params=params
+        ) as response:
+            if response.status >= 300:
+                logger.error("Error getting sign-in URL: %s", response.status)
+                response.raise_for_status()
+
+            return await response.text()
+
+    async def get_sign_in_resource(
+        self,
+        state: str,
+        code_challenge: Optional[str] = None,
+        emulator_url: Optional[str] = None,
+        final_redirect: Optional[str] = None,
+    ) -> SignInResource:
+        """
+        Get sign-in resource.
+
+        :param state: State parameter for OAuth flow.
+        :param code_challenge: Code challenge for PKCE.
+        :param emulator_url: Emulator URL if used.
+        :param final_redirect: Final redirect URL.
+        :return: The sign-in resource.
+        """
+        params = {"state": state}
+        if code_challenge:
+            params["codeChallenge"] = code_challenge
+        if emulator_url:
+            params["emulatorUrl"] = emulator_url
+        if final_redirect:
+            params["finalRedirect"] = final_redirect
+
+        logger.info(
+            "AgentSignIn.get_sign_in_resource(): Getting sign-in resource with params: %s",
+            params,
+        )
+        async with self.client.get(
+            "api/botsignin/getSignInResource", params=params
+        ) as response:
+            if response.status >= 300:
+                logger.error("Error getting sign-in resource: %s", response.status)
+                response.raise_for_status()
+
+            data = await response.json()
+            return SignInResource.model_validate(data)
+
+
+class UserToken(UserTokenBase):
+    """Implementation of user token operations."""
+
+    def __init__(self, client: ClientSession):
+        self.client = client
+
+    async def get_token(
+        self,
+        user_id: str,
+        connection_name: str,
+        channel_id: Optional[str] = None,
+        code: Optional[str] = None,
+    ) -> TokenResponse:
+        params = {"userId": user_id, "connectionName": connection_name}
+
+        if channel_id:
+            params["channelId"] = channel_id
+        if code:
+            params["code"] = code
+
+        logger.info("User_token.get_token(): Getting token with params: %s", params)
+        async with self.client.get("api/usertoken/GetToken", params=params) as response:
+            if response.status >= 300:
+                logger.error("Error getting token: %s", response.status)
+                response.raise_for_status()
+
+            data = await response.json()
+            return TokenResponse.model_validate(data)
+
+    async def _get_token_or_sign_in_resource(
+        self,
+        user_id: str,
+        connection_name: str,
+        channel_id: str,
+        state: str,
+        code: str = "",
+        final_redirect: str = "",
+        fwd_url: str = "",
+    ) -> TokenOrSignInResourceResponse:
+
+        params = {
+            "userId": user_id,
+            "connectionName": connection_name,
+            "channelId": channel_id,
+            "state": state,
+            "code": code,
+            "finalRedirect": final_redirect,
+            "fwdUrl": fwd_url,
+        }
+
+        logger.info("Getting token or sign-in resource with params: %s", params)
+        async with self.client.get(
+            "/api/usertoken/GetTokenOrSignInResource", params=params
+        ) as response:
+            if response.status != 200:
+                logger.error(
+                    "Error getting token or sign-in resource: %s", response.status
+                )
+                response.raise_for_status()
+
+            data = await response.json()
+            return TokenOrSignInResourceResponse.model_validate(data)
+
+    async def get_aad_tokens(
+        self,
+        user_id: str,
+        connection_name: str,
+        channel_id: Optional[str] = None,
+        body: Optional[dict] = None,
+    ) -> dict[str, TokenResponse]:
+        params = {"userId": user_id, "connectionName": connection_name}
+
+        if channel_id:
+            params["channelId"] = channel_id
+
+        logger.info("Getting AAD tokens with params: %s and body: %s", params, body)
+        async with self.client.post(
+            "api/usertoken/GetAadTokens", params=params, json=body
+        ) as response:
+            if response.status >= 300:
+                logger.error("Error getting AAD tokens: %s", response.status)
+                response.raise_for_status()
+
+            data = await response.json()
+            return {k: TokenResponse.model_validate(v) for k, v in data.items()}
+
+    async def sign_out(
+        self,
+        user_id: str,
+        connection_name: Optional[str] = None,
+        channel_id: Optional[str] = None,
+    ) -> None:
+        params = {"userId": user_id}
+
+        if connection_name:
+            params["connectionName"] = connection_name
+        if channel_id:
+            params["channelId"] = channel_id
+
+        logger.info("Signing out user %s with params: %s", user_id, params)
+        async with self.client.delete(
+            "api/usertoken/SignOut", params=params
+        ) as response:
+            if response.status >= 300:
+                logger.error("Error signing out: %s", response.status)
+                response.raise_for_status()
+
+    async def get_token_status(
+        self,
+        user_id: str,
+        channel_id: Optional[str] = None,
+        include: Optional[str] = None,
+    ) -> list[TokenStatus]:
+        params = {"userId": user_id}
+
+        if channel_id:
+            params["channelId"] = channel_id
+        if include:
+            params["include"] = include
+
+        logger.info("Getting token status for user %s with params: %s", user_id, params)
+        async with self.client.get(
+            "api/usertoken/GetTokenStatus", params=params
+        ) as response:
+            if response.status >= 300:
+                logger.error("Error getting token status: %s", response.status)
+                response.raise_for_status()
+
+            data = await response.json()
+            return [TokenStatus.model_validate(status) for status in data]
+
+    async def exchange_token(
+        self,
+        user_id: str,
+        connection_name: str,
+        channel_id: str,
+        body: Optional[dict] = None,
+    ) -> TokenResponse:
+        params = {
+            "userId": user_id,
+            "connectionName": connection_name,
+            "channelId": channel_id,
+        }
+
+        logger.info("Exchanging token with params: %s and body: %s", params, body)
+        async with self.client.post(
+            "api/usertoken/exchange", params=params, json=body
+        ) as response:
+            if response.status >= 300:
+                logger.error("Error exchanging token: %s", response.status)
+                response.raise_for_status()
+
+            data = await response.json()
+            return TokenResponse.model_validate(data)
+
+
+class UserTokenClient(UserTokenClientBase):
+    """
+    UserTokenClient is a client for interacting with the Microsoft M365 Agents SDK User Token API.
+    """
+
+    def __init__(self, endpoint: str, token: str, *, session: ClientSession = None):
+        """
+        Initialize a new instance of UserTokenClient.
+
+        :param endpoint: The endpoint URL for the token service.
+        :param token: The authentication token to use.
+        :param session: The aiohttp ClientSession to use for HTTP requests.
+        """
+        if not endpoint.endswith("/"):
+            endpoint += "/"
+
+        # Configure headers with JSON acceptance
+        headers = {
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "User-Agent": get_product_info(),
+        }
+
+        # Create session with the base URL
+        session = session or ClientSession(
+            base_url=endpoint,
+            headers=headers,
+        )
+        logger.debug(
+            "Creating UserTokenClient with endpoint: %s and headers: %s",
+            endpoint,
+            headers,
+        )
+
+        if len(token) > 1:
+            session.headers.update({"Authorization": f"Bearer {token}"})
+
+        self.client = session
+        self._agent_sign_in = AgentSignIn(self.client)
+        self._user_token = UserToken(self.client)
+
+    @property
+    def agent_sign_in(self) -> AgentSignInBase:
+        """
+        Gets the agent sign-in operations.
+
+        :return: The agent sign-in operations.
+        """
+        return self._agent_sign_in
+
+    @property
+    def user_token(self) -> UserTokenBase:
+        """
+        Gets the user token operations.
+
+        :return: The user token operations.
+        """
+        return self._user_token
+
+    async def close(self) -> None:
+        """Close the HTTP session."""
+        if self.client:
+            logger.debug("Closing UserTokenClient session")
+            await self.client.close()

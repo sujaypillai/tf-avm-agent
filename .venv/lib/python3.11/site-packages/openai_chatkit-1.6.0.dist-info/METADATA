@@ -1,0 +1,17 @@
+Metadata-Version: 2.4
+Name: openai-chatkit
+Version: 1.6.0
+Summary: A ChatKit backend SDK.
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+License-File: LICENSE
+License-File: NOTICE
+Requires-Dist: pydantic
+Requires-Dist: uvicorn
+Requires-Dist: openai
+Requires-Dist: openai-agents>=0.3.2
+Requires-Dist: jinja2<4,>=3.1
+Dynamic: license-file
+
+## License
+This project is licensed under the [Apache License 2.0](LICENSE).
