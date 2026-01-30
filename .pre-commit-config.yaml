@@ -1,0 +1,25 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: check-added-large-files
+        args: ['--maxkb=500']
+      - id: check-yaml
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: check-merge-conflict
+      - id: check-case-conflict
+
+  - repo: local
+    hooks:
+      - id: no-venv
+        name: Check for virtual environment
+        entry: bash -c 'if git diff --cached --name-only | grep -q "^\.venv/"; then echo "Error: .venv should not be committed" && exit 1; fi'
+        language: system
+        pass_filenames: false
+
+      - id: no-pycache
+        name: Check for __pycache__
+        entry: bash -c 'if git diff --cached --name-only | grep -q "__pycache__"; then echo "Error: __pycache__ should not be committed" && exit 1; fi'
+        language: system
+        pass_filenames: false
