@@ -26,7 +26,7 @@ from rich.prompt import Confirm, Prompt
 from rich.syntax import Syntax
 from rich.table import Table
 
-from tf_avm_agent.agent import TerraformAVMAgent, generate_terraform
+from tf_avm_agent.agent import PromptMode, TerraformAVMAgent, generate_terraform
 from tf_avm_agent.registry.avm_modules import AVM_MODULES, get_all_categories
 from tf_avm_agent.registry.version_fetcher import (
     clear_version_cache,
@@ -92,6 +92,22 @@ def generate_command(
         "--overwrite",
         help="Overwrite existing files in output directory",
     ),
+    system_prompt: Optional[str] = typer.Option(
+        None,
+        "--system-prompt", "-p",
+        help="Custom system prompt text (overrides default, used with --interactive)",
+    ),
+    system_prompt_file: Optional[Path] = typer.Option(
+        None,
+        "--system-prompt-file", "-P",
+        help="Path to file containing custom system prompt (used with --interactive)",
+        exists=True,
+    ),
+    prompt_mode: str = typer.Option(
+        "replace",
+        "--prompt-mode", "-m",
+        help="How to apply custom prompt: replace (default), prepend, append",
+    ),
 ):
     """
     Generate Terraform code from a list of services or an architecture diagram.
@@ -116,8 +132,16 @@ def generate_command(
         console.print(f"[cyan]Location:[/cyan] {location}")
 
         if interactive:
+            # Resolve prompt file content if provided
+            prompt_text = system_prompt
+            if system_prompt_file and not prompt_text:
+                prompt_text = system_prompt_file.read_text()
+
             # Use the AI agent for interactive generation
-            agent = TerraformAVMAgent()
+            agent = TerraformAVMAgent(
+                system_prompt=prompt_text,
+                prompt_mode=prompt_mode,
+            )
             prompt = f"""Generate a Terraform project with the following specifications:
 
 Project Name: {name}
@@ -171,7 +195,15 @@ Please:
         console.print(f"\n[cyan]Diagram:[/cyan] {diagram}")
         console.print(f"[cyan]Location:[/cyan] {location}")
 
-        agent = TerraformAVMAgent()
+        # Resolve prompt file content if provided
+        prompt_text = system_prompt
+        if system_prompt_file and not prompt_text:
+            prompt_text = system_prompt_file.read_text()
+
+        agent = TerraformAVMAgent(
+            system_prompt=prompt_text,
+            prompt_mode=prompt_mode,
+        )
         with console.status("[bold green]Analyzing diagram with AI agent..."):
             response = agent.analyze_diagram(
                 image_path=str(diagram),
@@ -191,6 +223,22 @@ def chat_command(
         "--azure-openai",
         help="Use Azure OpenAI instead of OpenAI",
     ),
+    system_prompt: Optional[str] = typer.Option(
+        None,
+        "--system-prompt", "-p",
+        help="Custom system prompt text (overrides default)",
+    ),
+    system_prompt_file: Optional[Path] = typer.Option(
+        None,
+        "--system-prompt-file", "-P",
+        help="Path to file containing custom system prompt",
+        exists=True,
+    ),
+    prompt_mode: str = typer.Option(
+        "replace",
+        "--prompt-mode", "-m",
+        help="How to apply custom prompt: replace (default), prepend, append",
+    ),
 ):
     """
     Start an interactive chat session with the Terraform AVM Agent.
@@ -199,15 +247,25 @@ def chat_command(
     - Explore available AVM modules
     - Generate Terraform code
     - Answer questions about Azure infrastructure
+
+    Custom System Prompts:
+    - Use --system-prompt to provide a custom prompt directly
+    - Use --system-prompt-file to load a prompt from a file
+    - Use --prompt-mode to control how custom prompts are applied
     """
     # Auto-detect Azure OpenAI if environment variables are set
     use_azure = azure_openai or bool(os.environ.get("AZURE_OPENAI_ENDPOINT"))
-    
+
     if use_azure:
         console.print("[dim]Using Azure OpenAI[/dim]")
     else:
         console.print("[dim]Using OpenAI[/dim]")
-    
+
+    # Resolve prompt file content if provided
+    prompt_text = system_prompt
+    if system_prompt_file and not prompt_text:
+        prompt_text = system_prompt_file.read_text()
+
     console.print(Panel(
         "[bold blue]Terraform AVM Agent - Interactive Mode[/bold blue]\n"
         "Type your questions or requests. Type 'quit' or 'exit' to end the session.\n"
@@ -215,7 +273,11 @@ def chat_command(
         title="Welcome"
     ))
 
-    agent = TerraformAVMAgent(use_azure_openai=use_azure)
+    agent = TerraformAVMAgent(
+        use_azure_openai=use_azure,
+        system_prompt=prompt_text,
+        prompt_mode=prompt_mode,
+    )
 
     while True:
         try:

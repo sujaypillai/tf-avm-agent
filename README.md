@@ -177,12 +177,14 @@ module "storage-account" {
 
 ### Environment Variables
 
-| Variable                  | Description                    |
-| ------------------------- | ------------------------------ |
-| `OPENAI_API_KEY`          | OpenAI API key for AI features |
-| `AZURE_OPENAI_ENDPOINT`   | Azure OpenAI endpoint          |
-| `AZURE_OPENAI_API_KEY`    | Azure OpenAI API key           |
-| `AZURE_OPENAI_DEPLOYMENT` | Azure OpenAI deployment name   |
+| Variable                          | Description                              |
+| --------------------------------- | ---------------------------------------- |
+| `OPENAI_API_KEY`                  | OpenAI API key for AI features           |
+| `AZURE_OPENAI_ENDPOINT`           | Azure OpenAI endpoint                    |
+| `AZURE_OPENAI_API_KEY`            | Azure OpenAI API key                     |
+| `AZURE_OPENAI_DEPLOYMENT`         | Azure OpenAI deployment name             |
+| `TF_AVM_AGENT_SYSTEM_PROMPT`      | Custom system prompt (overrides default) |
+| `TF_AVM_AGENT_SYSTEM_PROMPT_FILE` | Path to file containing custom prompt    |
 
 ### CLI Options
 
@@ -191,6 +193,92 @@ tf-avm-agent --help
 tf-avm-agent generate --help
 tf-avm-agent chat --help
 ```
+
+## Custom System Prompts
+
+You can customize the AI agent's behavior by providing a custom system prompt. This is useful for:
+- Adding organization-specific guidelines
+- Focusing on particular aspects (security, cost optimization, etc.)
+- Including compliance requirements
+
+### Methods for Customization
+
+#### 1. Environment Variables
+
+```bash
+# Direct prompt
+export TF_AVM_AGENT_SYSTEM_PROMPT="You are a Terraform expert focusing on security best practices."
+
+# Or from a file
+export TF_AVM_AGENT_SYSTEM_PROMPT_FILE="./my-prompt.txt"
+
+tf-avm-agent chat
+```
+
+#### 2. CLI Arguments
+
+```bash
+# Direct prompt
+tf-avm-agent chat --system-prompt "Focus on cost optimization"
+
+# From file
+tf-avm-agent chat --system-prompt-file ./my-prompt.txt
+
+# Append to default prompt instead of replacing
+tf-avm-agent chat --system-prompt "Also consider security" --prompt-mode append
+
+# Prepend to default prompt
+tf-avm-agent chat --system-prompt "IMPORTANT: All resources must be in West Europe" --prompt-mode prepend
+```
+
+#### 3. Python API
+
+```python
+from tf_avm_agent import TerraformAVMAgent, PromptMode
+
+# Replace default prompt
+agent = TerraformAVMAgent(
+    system_prompt="You are a security-focused Terraform expert."
+)
+
+# Append additional context
+agent = TerraformAVMAgent(
+    system_prompt="Always recommend private endpoints.",
+    prompt_mode=PromptMode.APPEND,
+)
+
+# Prepend requirements
+agent = TerraformAVMAgent(
+    system_prompt="All resources must comply with SOC2 requirements.",
+    prompt_mode=PromptMode.PREPEND,
+)
+
+# Load from file
+agent = TerraformAVMAgent(
+    system_prompt_file="./prompts/enterprise.txt"
+)
+
+# Access the resolved prompt
+print(agent.system_prompt)
+```
+
+### Prompt Modes
+
+| Mode      | Description                                    |
+| --------- | ---------------------------------------------- |
+| `replace` | Completely replace the default prompt (default)|
+| `prepend` | Add custom prompt before the default prompt    |
+| `append`  | Add custom prompt after the default prompt     |
+
+### Priority Order
+
+When multiple sources provide a prompt, they are resolved in this order:
+
+1. Direct `system_prompt` parameter
+2. `system_prompt_file` parameter
+3. `TF_AVM_AGENT_SYSTEM_PROMPT` environment variable
+4. `TF_AVM_AGENT_SYSTEM_PROMPT_FILE` environment variable
+5. Default built-in prompt
 
 ## Architecture
 

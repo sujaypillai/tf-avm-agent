@@ -5,7 +5,7 @@ This agent can accept a list of Azure services or an architecture diagram as inp
 and generate a complete Terraform project using Azure Verified Modules (AVM).
 """
 
-from tf_avm_agent.agent import TerraformAVMAgent
+from tf_avm_agent.agent import PromptMode, TerraformAVMAgent
 
 __version__ = "0.1.0"
-__all__ = ["TerraformAVMAgent"]
+__all__ = ["TerraformAVMAgent", "PromptMode"]

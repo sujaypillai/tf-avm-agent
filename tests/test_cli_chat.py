@@ -81,11 +81,13 @@ class TestChatAzureOpenAIConfiguration:
         with patch("tf_avm_agent.cli.TerraformAVMAgent") as mock_agent:
             mock_instance = MagicMock()
             mock_agent.return_value = mock_instance
-            
+
             result = runner.invoke(app, ["chat", "--azure-openai"], input="quit\n")
-            
+
             # Verify TerraformAVMAgent was called with use_azure_openai=True
-            mock_agent.assert_called_once_with(use_azure_openai=True)
+            mock_agent.assert_called_once()
+            call_kwargs = mock_agent.call_args[1]
+            assert call_kwargs["use_azure_openai"] is True
 
     @patch.dict(os.environ, {"AZURE_OPENAI_ENDPOINT": ""}, clear=False)
     def test_chat_without_azure_openai_flag(self):
@@ -93,11 +95,13 @@ class TestChatAzureOpenAIConfiguration:
         with patch("tf_avm_agent.cli.TerraformAVMAgent") as mock_agent:
             mock_instance = MagicMock()
             mock_agent.return_value = mock_instance
-            
+
             result = runner.invoke(app, ["chat"], input="quit\n")
-            
+
             # Verify TerraformAVMAgent was called with use_azure_openai=False
-            mock_agent.assert_called_once_with(use_azure_openai=False)
+            mock_agent.assert_called_once()
+            call_kwargs = mock_agent.call_args[1]
+            assert call_kwargs["use_azure_openai"] is False
 
     @patch.dict(os.environ, {"AZURE_OPENAI_ENDPOINT": "https://test.openai.azure.com"})
     def test_chat_auto_detects_azure_from_env(self):

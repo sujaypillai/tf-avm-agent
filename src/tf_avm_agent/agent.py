@@ -9,8 +9,17 @@ import asyncio
 import base64
 import json
 import os
+from enum import Enum
 from pathlib import Path
 from typing import Annotated
+
+
+class PromptMode(Enum):
+    """Mode for applying custom system prompts."""
+
+    REPLACE = "replace"  # Completely replace the default prompt
+    PREPEND = "prepend"  # Add custom prompt before the default
+    APPEND = "append"  # Add custom prompt after the default
 
 from pydantic import BaseModel, Field
 
@@ -148,6 +157,9 @@ class TerraformAVMAgent:
         azure_endpoint: str | None = None,
         azure_deployment: str | None = None,
         api_key: str | None = None,
+        system_prompt: str | None = None,
+        system_prompt_file: str | Path | None = None,
+        prompt_mode: PromptMode | str = PromptMode.REPLACE,
     ):
         """
         Initialize the Terraform AVM Agent.
@@ -157,15 +169,18 @@ class TerraformAVMAgent:
             azure_endpoint: Azure OpenAI endpoint (required if use_azure_openai=True)
             azure_deployment: Azure OpenAI deployment name
             api_key: API key (uses environment variable if not provided)
+            system_prompt: Custom system prompt text (overrides default based on prompt_mode)
+            system_prompt_file: Path to file containing custom system prompt
+            prompt_mode: How to apply custom prompt - 'replace', 'prepend', or 'append'
         """
         self.use_azure_openai = use_azure_openai
-        
+
         # Read from environment variables if not provided
         if use_azure_openai:
             self.azure_endpoint = azure_endpoint or os.environ.get("AZURE_OPENAI_ENDPOINT")
             # Support multiple env var names for deployment
             self.azure_deployment = (
-                azure_deployment 
+                azure_deployment
                 or os.environ.get("AZURE_OPENAI_DEPLOYMENT")
                 or os.environ.get("AZURE_OPENAI_CHAT_DEPLOYMENT_NAME")
             )
@@ -174,12 +189,91 @@ class TerraformAVMAgent:
             self.azure_endpoint = azure_endpoint
             self.azure_deployment = azure_deployment
             self.api_key = api_key or os.environ.get("OPENAI_API_KEY")
-        
+
+        # Handle prompt_mode as string or enum
+        if isinstance(prompt_mode, str):
+            prompt_mode = PromptMode(prompt_mode)
+
+        # Resolve the system prompt
+        self._system_prompt = self._resolve_system_prompt(
+            system_prompt=system_prompt,
+            system_prompt_file=system_prompt_file,
+            prompt_mode=prompt_mode,
+        )
+
         self._agent = None
         self._loop = None
         self._conversation_history = []
         self._current_diagram = None
         self._identified_services = []
+
+    def _resolve_system_prompt(
+        self,
+        system_prompt: str | None,
+        system_prompt_file: str | Path | None,
+        prompt_mode: PromptMode,
+    ) -> str:
+        """
+        Resolve the final system prompt based on configuration.
+
+        Priority order:
+        1. Direct system_prompt parameter
+        2. system_prompt_file parameter
+        3. TF_AVM_AGENT_SYSTEM_PROMPT environment variable
+        4. TF_AVM_AGENT_SYSTEM_PROMPT_FILE environment variable
+        5. Default AGENT_SYSTEM_PROMPT
+
+        Args:
+            system_prompt: Direct prompt text
+            system_prompt_file: Path to prompt file
+            prompt_mode: How to combine custom prompt with default
+
+        Returns:
+            The resolved system prompt string
+        """
+        custom_prompt = None
+
+        # Check direct parameter
+        if system_prompt:
+            custom_prompt = system_prompt
+        # Check file parameter
+        elif system_prompt_file:
+            path = Path(system_prompt_file)
+            if not path.exists():
+                raise FileNotFoundError(
+                    f"System prompt file not found: {system_prompt_file}"
+                )
+            custom_prompt = path.read_text().strip()
+        # Check environment variables
+        else:
+            env_prompt = os.environ.get("TF_AVM_AGENT_SYSTEM_PROMPT")
+            if env_prompt:
+                custom_prompt = env_prompt
+            else:
+                env_file = os.environ.get("TF_AVM_AGENT_SYSTEM_PROMPT_FILE")
+                if env_file:
+                    path = Path(env_file)
+                    if path.exists():
+                        custom_prompt = path.read_text().strip()
+
+        # If no custom prompt, return default
+        if not custom_prompt:
+            return AGENT_SYSTEM_PROMPT
+
+        # Apply mode
+        if prompt_mode == PromptMode.REPLACE:
+            return custom_prompt
+        elif prompt_mode == PromptMode.PREPEND:
+            return f"{custom_prompt}\n\n{AGENT_SYSTEM_PROMPT}"
+        elif prompt_mode == PromptMode.APPEND:
+            return f"{AGENT_SYSTEM_PROMPT}\n\n{custom_prompt}"
+
+        return AGENT_SYSTEM_PROMPT
+
+    @property
+    def system_prompt(self) -> str:
+        """Get the current system prompt."""
+        return self._system_prompt
 
     def _get_tools(self) -> list:
         """Get the list of tools for the agent."""
@@ -258,7 +352,7 @@ class TerraformAVMAgent:
 
         return ChatAgent(
             chat_client=chat_client,
-            instructions=AGENT_SYSTEM_PROMPT,
+            instructions=self._system_prompt,
             tools=self._get_tools(),
         )
 
