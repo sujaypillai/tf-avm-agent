@@ -205,11 +205,11 @@ graph TB
             TG["Terraform<br/>Generator"]
         end
         
+        Registry["AVM Module Registry (40+ modules)"]
+        
         CLI --> Core
+        Core --> Registry
     end
-    
-    Registry["AVM Module Registry (40+ modules)"]
-    Core --> Registry
 ```
 
 ## Development
