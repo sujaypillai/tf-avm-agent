@@ -192,20 +192,24 @@ tf-avm-agent chat --help
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    Terraform AVM Agent                       │
-├─────────────────────────────────────────────────────────────┤
-│  CLI Interface (Typer + Rich)                               │
-├─────────────────────────────────────────────────────────────┤
-│  Agent Core (Microsoft Agent Framework)                     │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐ │
-│  │   Diagram   │  │  AVM Module │  │    Terraform        │ │
-│  │  Analyzer   │  │   Lookup    │  │    Generator        │ │
-│  └─────────────┘  └─────────────┘  └─────────────────────┘ │
-├─────────────────────────────────────────────────────────────┤
-│  AVM Module Registry (40+ modules)                          │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph Agent["Terraform AVM Agent"]
+        direction TB
+        CLI["CLI Interface (Typer + Rich)"]
+        
+        subgraph Core["Agent Core (Microsoft Agent Framework)"]
+            direction LR
+            DA["Diagram<br/>Analyzer"]
+            AVM["AVM Module<br/>Lookup"]
+            TG["Terraform<br/>Generator"]
+        end
+        
+        Registry["AVM Module Registry (40+ modules)"]
+        
+        CLI --> Core
+        Core --> Registry
+    end
 ```
 
 ## Development
