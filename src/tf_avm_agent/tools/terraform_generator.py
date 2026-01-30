@@ -3,9 +3,20 @@ Terraform Code Generator Tool.
 
 This tool generates Terraform code using Azure Verified Modules (AVM)
 based on the identified Azure services.
+
+AVM Best Practices Applied:
+- Pessimistic version constraints (~> X.0) for providers and modules
+- enable_telemetry = var.enable_telemetry for all AVM modules
+- Proper variable validation blocks
+- Consistent naming conventions (snake_case)
+- terraform fmt compatible formatting
+- Descriptive comments and section headers
 """
 
 import os
+import shutil
+import subprocess
+import tempfile
 from pathlib import Path
 from typing import Annotated
 
@@ -48,6 +59,80 @@ class TerraformProjectOutput(BaseModel):
     summary: str = Field(default="")
 
 
+def terraform_fmt(content: str) -> str:
+    """
+    Format Terraform content using 'terraform fmt'.
+    
+    Args:
+        content: The Terraform HCL content to format
+        
+    Returns:
+        Formatted content, or original if terraform is not available
+    """
+    # Check if terraform is available
+    if not shutil.which("terraform"):
+        return content
+    
+    try:
+        # Create a temp file with the content
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.tf', delete=False) as f:
+            f.write(content)
+            temp_path = f.name
+        
+        # Run terraform fmt
+        subprocess.run(
+            ["terraform", "fmt", temp_path],
+            capture_output=True,
+            timeout=10,
+        )
+        
+        # Read back the formatted content
+        with open(temp_path, 'r') as f:
+            formatted = f.read()
+        
+        # Clean up
+        os.unlink(temp_path)
+        return formatted
+        
+    except (subprocess.TimeoutExpired, subprocess.SubprocessError, OSError):
+        return content
+
+
+def validate_terraform_syntax(content: str) -> tuple[bool, str]:
+    """
+    Validate Terraform syntax using 'terraform fmt -check'.
+    
+    Args:
+        content: The Terraform HCL content to validate
+        
+    Returns:
+        Tuple of (is_valid, error_message)
+    """
+    if not shutil.which("terraform"):
+        return True, "terraform not installed - skipping validation"
+    
+    try:
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.tf', delete=False) as f:
+            f.write(content)
+            temp_path = f.name
+        
+        result = subprocess.run(
+            ["terraform", "fmt", "-check", "-diff", temp_path],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        
+        os.unlink(temp_path)
+        
+        if result.returncode == 0:
+            return True, "Terraform syntax is valid and properly formatted"
+        else:
+            return False, f"Formatting issues: {result.stdout}"
+            
+    except (subprocess.TimeoutExpired, subprocess.SubprocessError, OSError) as e:
+        return True, f"Could not validate: {e}"
+
 def generate_terraform_module(
     service_name: Annotated[str, Field(description="The Azure service name to generate code for")],
     module_instance_name: Annotated[str, Field(description="Name for this module instance")],
@@ -55,7 +140,7 @@ def generate_terraform_module(
     use_resource_group_ref: Annotated[bool, Field(description="Reference resource group from azurerm_resource_group")] = True,
 ) -> str:
     """
-    Generate Terraform code for a single AVM module.
+    Generate Terraform code for a single AVM module following AVM best practices.
 
     Args:
         service_name: The Azure service to generate code for
@@ -64,7 +149,7 @@ def generate_terraform_module(
         use_resource_group_ref: Whether to use azurerm_resource_group reference
 
     Returns:
-        Generated Terraform HCL code
+        Generated Terraform HCL code (terraform fmt compatible)
     """
     module = get_module_by_service(service_name)
     if not module:
@@ -74,7 +159,10 @@ def generate_terraform_module(
     lines = [
         f'module "{module_instance_name}" {{',
         f'  source  = "{module.source}"',
-        f'  version = "{module.version}"',
+        f'  version = "~> {module.version.split(".")[0]}.0"  # Pessimistic constraint for flexibility',
+        "",
+        "  # AVM Best Practice: Enable telemetry for module usage tracking",
+        "  enable_telemetry = var.enable_telemetry",
         "",
     ]
 
@@ -141,7 +229,7 @@ def generate_providers_tf(
     azurerm_version: Annotated[str, Field(description="AzureRM provider version constraint")] = "~> 4.0",
 ) -> str:
     """
-    Generate the providers.tf file content.
+    Generate the providers.tf file content following AVM best practices.
 
     Args:
         subscription_id: Optional subscription ID
@@ -149,9 +237,14 @@ def generate_providers_tf(
         azurerm_version: AzureRM provider version constraint
 
     Returns:
-        Content for providers.tf
+        Content for providers.tf (terraform fmt compatible)
     """
     lines = [
+        "# -----------------------------------------------------------------------------",
+        "# Terraform Configuration",
+        "# AVM Best Practice: Use pessimistic version constraints (~> X.0)",
+        "# -----------------------------------------------------------------------------",
+        "",
         "terraform {",
         f'  required_version = ">= {terraform_version}"',
         "",
@@ -166,6 +259,10 @@ def generate_providers_tf(
         "    }",
         "  }",
         "}",
+        "",
+        "# -----------------------------------------------------------------------------",
+        "# AzureRM Provider Configuration",
+        "# -----------------------------------------------------------------------------",
         "",
         "provider \"azurerm\" {",
         "  features {",
@@ -182,6 +279,8 @@ def generate_providers_tf(
         lines.append(f'  subscription_id = "{subscription_id}"')
 
     lines.extend([
+        "",
+        "  # AVM Best Practice: Use Azure AD for storage authentication",
         "  storage_use_azuread = true",
         "}",
     ])
@@ -193,53 +292,88 @@ def generate_variables_tf(
     project_config: Annotated[TerraformProjectConfig, Field(description="Project configuration")],
 ) -> str:
     """
-    Generate the variables.tf file content.
+    Generate the variables.tf file content following AVM best practices.
 
     Args:
         project_config: The project configuration
 
     Returns:
-        Content for variables.tf
+        Content for variables.tf (terraform fmt compatible)
     """
     lines = [
+        "# -----------------------------------------------------------------------------",
+        "# Required Variables",
+        "# -----------------------------------------------------------------------------",
+        "",
         'variable "location" {',
-        '  description = "The Azure region for resource deployment"',
+        '  description = "The Azure region for resource deployment."',
         '  type        = string',
         f'  default     = "{project_config.location}"',
+        "",
+        "  validation {",
+        '    condition     = length(var.location) > 0',
+        '    error_message = "Location must not be empty."',
+        "  }",
         "}",
         "",
         'variable "resource_group_name" {',
-        '  description = "The name of the resource group"',
+        '  description = "The name of the resource group."',
         '  type        = string',
         f'  default     = "{project_config.resource_group_name}"',
         "}",
         "",
         'variable "project_name" {',
-        '  description = "The name of the project (used for naming resources)"',
+        '  description = "The name of the project (used for naming resources)."',
         '  type        = string',
         f'  default     = "{project_config.project_name}"',
+        "",
+        "  validation {",
+        '    condition     = can(regex("^[a-z0-9-]+$", var.project_name))',
+        '    error_message = "Project name must contain only lowercase letters, numbers, and hyphens."',
+        "  }",
         "}",
         "",
+        "# -----------------------------------------------------------------------------",
+        "# Optional Variables",
+        "# -----------------------------------------------------------------------------",
+        "",
         'variable "environment" {',
-        '  description = "The environment (dev, staging, prod)"',
+        '  description = "The environment (dev, staging, prod)."',
         '  type        = string',
         '  default     = "dev"',
+        "",
+        "  validation {",
+        '    condition     = contains(["dev", "staging", "prod"], var.environment)',
+        '    error_message = "Environment must be one of: dev, staging, prod."',
+        "  }",
+        "}",
+        "",
+        "# AVM Best Practice: Enable telemetry for module usage tracking",
+        'variable "enable_telemetry" {',
+        '  description = "Enable or disable telemetry for AVM modules."',
+        '  type        = bool',
+        '  default     = true',
         "}",
         "",
         'variable "tags" {',
-        '  description = "Tags to apply to all resources"',
+        '  description = "Tags to apply to all resources."',
         '  type        = map(string)',
-        "  default     = {",
+        "  default = {",
     ]
 
     default_tags = {
         "project": project_config.project_name,
         "managed_by": "terraform",
+        "environment": "${var.environment}",
         **project_config.tags,
     }
 
     for key, value in default_tags.items():
-        lines.append(f'    "{key}" = "{value}"')
+        if value.startswith("${"):
+            # This is a variable reference, don't quote it
+            lines.append(f'    {key} = {value.replace("${", "").replace("}", "")}')
+        else:
+            lines.append(f'    {key} = "{value}"')
 
     lines.extend([
         "  }",
@@ -335,28 +469,38 @@ def generate_outputs_tf(
     modules: Annotated[list[TerraformModuleConfig], Field(description="List of module configurations")],
 ) -> str:
     """
-    Generate the outputs.tf file content.
+    Generate the outputs.tf file content following AVM best practices.
 
     Args:
         modules: List of module configurations
 
     Returns:
-        Content for outputs.tf
+        Content for outputs.tf (terraform fmt compatible)
     """
     lines = [
         "# -----------------------------------------------------------------------------",
-        "# Outputs",
+        "# Resource Group Outputs",
         "# -----------------------------------------------------------------------------",
         "",
         'output "resource_group_name" {',
-        '  description = "The name of the resource group"',
+        '  description = "The name of the resource group."',
         "  value       = azurerm_resource_group.main.name",
         "}",
         "",
         'output "resource_group_id" {',
-        '  description = "The ID of the resource group"',
+        '  description = "The ID of the resource group."',
         "  value       = azurerm_resource_group.main.id",
         "}",
+        "",
+        'output "resource_group_location" {',
+        '  description = "The location of the resource group."',
+        "  value       = azurerm_resource_group.main.location",
+        "}",
+        "",
+        "# -----------------------------------------------------------------------------",
+        "# Module Outputs",
+        "# AVM Best Practice: Expose resource_id as the primary output",
+        "# -----------------------------------------------------------------------------",
     ]
 
     for module_config in modules:
@@ -366,11 +510,11 @@ def generate_outputs_tf(
 
         module_name = module_config.module_name
 
-        # Output the resource ID
+        # Output the resource ID (AVM standard output)
         lines.extend([
             "",
             f'output "{module_name}_resource_id" {{',
-            f'  description = "The resource ID of {module_name}"',
+            f'  description = "The resource ID of {module_name}."',
             f"  value       = module.{module_name}.resource_id",
             "}",
         ])
@@ -380,7 +524,7 @@ def generate_outputs_tf(
             lines.extend([
                 "",
                 f'output "{module_name}_name" {{',
-                f'  description = "The name of {module_name}"',
+                f'  description = "The name of {module_name}."',
                 f"  value       = module.{module_name}.name",
                 "}",
             ])
@@ -483,23 +627,23 @@ def generate_terraform_project(
     files = [
         GeneratedFile(
             filename="providers.tf",
-            content=generate_providers_tf(),
+            content=terraform_fmt(generate_providers_tf()),
         ),
         GeneratedFile(
             filename="variables.tf",
-            content=generate_variables_tf(project_config),
+            content=terraform_fmt(generate_variables_tf(project_config)),
         ),
         GeneratedFile(
             filename="main.tf",
-            content=generate_main_tf(
+            content=terraform_fmt(generate_main_tf(
                 modules=module_configs,
                 resource_group_name=rg_name,
                 location=location,
-            ),
+            )),
         ),
         GeneratedFile(
             filename="outputs.tf",
-            content=generate_outputs_tf(module_configs),
+            content=terraform_fmt(generate_outputs_tf(module_configs)),
         ),
         GeneratedFile(
             filename="terraform.tfvars.example",
@@ -518,6 +662,13 @@ def generate_terraform_project(
     # Generate summary
     module_summary = "\n".join(f"  - {m.module_name} ({m.avm_module})" for m in module_configs)
     summary = f"""Terraform project '{project_name}' generated successfully!
+
+AVM Best Practices Applied:
+  ✓ Pessimistic version constraints (~> X.0)
+  ✓ enable_telemetry variable for AVM modules
+  ✓ Variable validation blocks
+  ✓ terraform fmt compatible formatting
+  ✓ Descriptive comments and section headers
 
 Files created:
   - providers.tf

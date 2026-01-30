@@ -12,6 +12,7 @@ Usage:
 """
 
 import asyncio
+import os
 import sys
 from pathlib import Path
 from typing import Optional
@@ -35,6 +36,13 @@ from tf_avm_agent.tools.avm_lookup import (
     get_avm_module_info,
     list_available_avm_modules,
     search_avm_modules,
+)
+from tf_avm_agent.tools.diagram_analyzer import (
+    encode_image_to_base64,
+    encode_image_from_url,
+    get_image_media_type,
+    get_filename_from_url,
+    is_url,
 )
 from tf_avm_agent.tools.terraform_generator import write_terraform_files
 
@@ -192,6 +200,14 @@ def chat_command(
     - Generate Terraform code
     - Answer questions about Azure infrastructure
     """
+    # Auto-detect Azure OpenAI if environment variables are set
+    use_azure = azure_openai or bool(os.environ.get("AZURE_OPENAI_ENDPOINT"))
+    
+    if use_azure:
+        console.print("[dim]Using Azure OpenAI[/dim]")
+    else:
+        console.print("[dim]Using OpenAI[/dim]")
+    
     console.print(Panel(
         "[bold blue]Terraform AVM Agent - Interactive Mode[/bold blue]\n"
         "Type your questions or requests. Type 'quit' or 'exit' to end the session.\n"
@@ -199,7 +215,7 @@ def chat_command(
         title="Welcome"
     ))
 
-    agent = TerraformAVMAgent(use_azure_openai=azure_openai)
+    agent = TerraformAVMAgent(use_azure_openai=use_azure)
 
     while True:
         try:
@@ -215,15 +231,84 @@ def chat_command(
                     "- `list modules` - List all available AVM modules\n"
                     "- `search <query>` - Search for modules\n"
                     "- `info <module>` - Get details about a module\n"
+                    "- `load <filepath|url>` - Load and analyze a diagram (local file or URL)\n"
                     "- `generate <services>` - Generate Terraform code\n"
+                    "- `clear` - Clear conversation history\n"
                     "- `quit` or `exit` - End the session\n\n"
-                    "**Example prompts:**\n"
+                    "**Examples:**\n"
+                    "- `load ./architecture.png`\n"
+                    "- `load https://example.com/diagram.svg`\n"
                     "- 'Generate Terraform for a web app with PostgreSQL database'\n"
-                    "- 'What AVM modules are available for networking?'\n"
-                    "- 'Create a Terraform project for AKS with monitoring'",
+                    "- 'What AVM modules are available for networking?'",
                     title="Help"
                 ))
                 continue
+
+            if user_input.lower() == "clear":
+                agent.clear_history()
+                console.print("[yellow]Conversation history cleared.[/yellow]")
+                continue
+
+            # Handle load diagram command (supports both local files and URLs)
+            if user_input.lower().startswith("load "):
+                source = user_input.replace("load ", "").strip().strip('"').strip("'")
+                
+                try:
+                    if is_url(source):
+                        # Handle URL
+                        console.print(f"[dim]Downloading diagram from URL: {source}[/dim]")
+                        
+                        with console.status("[bold green]Downloading..."):
+                            image_data, media_type = encode_image_from_url(source)
+                            filename = get_filename_from_url(source)
+                        
+                        # Store in agent context
+                        agent._current_diagram = {
+                            "path": source,
+                            "data": image_data,
+                            "media_type": media_type,
+                            "is_url": True
+                        }
+                        
+                        # Send to agent for analysis
+                        with console.status("[bold green]Analyzing diagram..."):
+                            response = agent.analyze_diagram_from_url(source, filename)
+                        
+                        console.print(f"\n[bold green]Agent[/bold green]:")
+                        console.print(Markdown(response))
+                        continue
+                    else:
+                        # Handle local file
+                        file_path = os.path.expanduser(source)
+                        
+                        if not os.path.exists(file_path):
+                            console.print(f"[red]Error: File not found: {file_path}[/red]")
+                            continue
+                        
+                        console.print(f"[dim]Loading diagram: {file_path}[/dim]")
+                        
+                        # Read and encode the image
+                        image_data = encode_image_to_base64(file_path)
+                        media_type = get_image_media_type(file_path)
+                        
+                        # Store in agent context for later use
+                        agent._current_diagram = {
+                            "path": file_path,
+                            "data": image_data,
+                            "media_type": media_type,
+                            "is_url": False
+                        }
+                        
+                        # Send to agent for analysis
+                        with console.status("[bold green]Analyzing diagram..."):
+                            response = agent.analyze_diagram(file_path)
+                        
+                        console.print(f"\n[bold green]Agent[/bold green]:")
+                        console.print(Markdown(response))
+                        continue
+                except Exception as e:
+                    console.print(f"[red]Error loading diagram: {e}[/red]")
+                    continue
 
             # Handle special commands
             if user_input.lower().startswith("list modules"):

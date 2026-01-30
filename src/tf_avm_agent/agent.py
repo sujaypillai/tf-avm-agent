@@ -8,6 +8,7 @@ Built using the Microsoft Agent Framework.
 import asyncio
 import base64
 import json
+import os
 from pathlib import Path
 from typing import Annotated
 
@@ -59,6 +60,13 @@ from tf_avm_agent.tools.terraform_generator import (
 AGENT_SYSTEM_PROMPT = """You are a Terraform Infrastructure Expert specializing in Azure Verified Modules (AVM).
 
 Your role is to help users generate Terraform code for deploying Azure infrastructure using Azure Verified Modules.
+
+## CRITICAL: Conversation Context
+- You MUST use information from the conversation history provided
+- If services were previously identified (from a diagram, URL, or user input), USE THEM - do NOT ask again
+- When the user asks to "generate Terraform" or "create a project", immediately proceed using the previously identified services
+- Do NOT ask for services again if they were already identified in this conversation
+
 You can:
 
 1. **Analyze Architecture Diagrams**: When given an image of an Azure architecture diagram, identify all Azure services and their relationships.
@@ -82,6 +90,7 @@ You can:
 - Add helpful comments to generated code
 - Consider security best practices (private endpoints, network rules, managed identities)
 - When analyzing diagrams, identify all Azure services even if they don't have an AVM module
+- **IMPORTANT**: When user confirms to generate, IMMEDIATELY generate the code using previously identified services
 
 ## Available Tools:
 
@@ -94,12 +103,11 @@ You can:
 - `generate_terraform_project`: Generate a complete Terraform project
 - `write_terraform_files`: Write generated files to disk
 
-When the user provides a list of services or an architecture diagram, follow these steps:
-1. Identify all required Azure services
-2. Map services to AVM modules using the lookup tools
-3. Determine dependencies between modules
-4. Generate a complete Terraform project
-5. Offer to write the files to disk
+## Workflow:
+1. When services are identified (from diagram/URL/user), REMEMBER them
+2. When user says "generate", "create project", or similar - USE the remembered services
+3. Generate complete Terraform code immediately without asking again
+4. Offer to write files to disk
 
 Always explain what you're doing and provide clear next steps for the user.
 """
@@ -151,10 +159,27 @@ class TerraformAVMAgent:
             api_key: API key (uses environment variable if not provided)
         """
         self.use_azure_openai = use_azure_openai
-        self.azure_endpoint = azure_endpoint
-        self.azure_deployment = azure_deployment
-        self.api_key = api_key
+        
+        # Read from environment variables if not provided
+        if use_azure_openai:
+            self.azure_endpoint = azure_endpoint or os.environ.get("AZURE_OPENAI_ENDPOINT")
+            # Support multiple env var names for deployment
+            self.azure_deployment = (
+                azure_deployment 
+                or os.environ.get("AZURE_OPENAI_DEPLOYMENT")
+                or os.environ.get("AZURE_OPENAI_CHAT_DEPLOYMENT_NAME")
+            )
+            self.api_key = api_key or os.environ.get("AZURE_OPENAI_API_KEY")
+        else:
+            self.azure_endpoint = azure_endpoint
+            self.azure_deployment = azure_deployment
+            self.api_key = api_key or os.environ.get("OPENAI_API_KEY")
+        
         self._agent = None
+        self._loop = None
+        self._conversation_history = []
+        self._current_diagram = None
+        self._identified_services = []
 
     def _get_tools(self) -> list:
         """Get the list of tools for the agent."""
@@ -210,13 +235,23 @@ class TerraformAVMAgent:
             )
 
         if self.use_azure_openai:
+            if not self.azure_endpoint:
+                raise ValueError(
+                    "Azure OpenAI endpoint is required. "
+                    "Set via 'azure_endpoint' parameter or 'AZURE_OPENAI_ENDPOINT' environment variable."
+                )
+            if not self.azure_deployment:
+                raise ValueError(
+                    "Azure OpenAI deployment name is required. "
+                    "Set via 'azure_deployment' parameter or 'AZURE_OPENAI_DEPLOYMENT' environment variable."
+                )
             from azure.identity import DefaultAzureCredential
 
+            # Use DefaultAzureCredential (Entra ID) - API key auth may be disabled on the resource
             chat_client = AzureOpenAIChatClient(
                 endpoint=self.azure_endpoint,
                 deployment=self.azure_deployment,
-                credential=DefaultAzureCredential() if not self.api_key else None,
-                api_key=self.api_key,
+                credential=DefaultAzureCredential(),
             )
         else:
             chat_client = OpenAIChatClient(api_key=self.api_key)
@@ -240,8 +275,59 @@ class TerraformAVMAgent:
         if self._agent is None:
             self._agent = await self._create_agent()
 
-        response = await self._agent.run(prompt)
-        return response.text if hasattr(response, "text") else str(response)
+        # Add user message to history
+        self._conversation_history.append({"role": "user", "content": prompt})
+        
+        # Build context from conversation history to maintain state
+        # Include previous exchanges so the agent remembers identified services
+        context_prompt = prompt
+        if len(self._conversation_history) > 1:
+            # Build conversation context
+            history_context = "\n\n--- CONVERSATION HISTORY (for context) ---\n"
+            for msg in self._conversation_history[:-1]:  # Exclude current message
+                role = "User" if msg["role"] == "user" else "Assistant"
+                # Truncate long messages to avoid token limits
+                content = msg["content"][:2000] + "..." if len(msg["content"]) > 2000 else msg["content"]
+                history_context += f"\n{role}: {content}\n"
+            history_context += "\n--- END HISTORY ---\n\n"
+            history_context += f"Current request: {prompt}"
+            
+            # Add reminder about identified services if any
+            if self._identified_services:
+                history_context += f"\n\nPreviously identified services: {', '.join(self._identified_services)}"
+            
+            context_prompt = history_context
+        
+        # Run with conversation history context
+        response = await self._agent.run(context_prompt)
+        response_text = response.text if hasattr(response, "text") else str(response)
+        
+        # Extract and store any identified services from the response
+        self._extract_services_from_response(response_text)
+        
+        # Add assistant response to history
+        self._conversation_history.append({"role": "assistant", "content": response_text})
+        
+        return response_text
+    
+    def _extract_services_from_response(self, response: str):
+        """Extract and store identified Azure services from agent response."""
+        # Common Azure service keywords to look for
+        service_keywords = [
+            "azure openai", "machine learning", "ai search", "cognitive search",
+            "storage account", "adls", "data lake", "app service", "functions",
+            "container apps", "aks", "kubernetes", "container registry", "acr",
+            "key vault", "virtual network", "vnet", "subnet", "private endpoint",
+            "dns zone", "network security group", "nsg", "application gateway",
+            "waf", "log analytics", "managed identity", "sql", "cosmos", "redis",
+            "event hub", "service bus", "api management", "front door"
+        ]
+        
+        response_lower = response.lower()
+        for service in service_keywords:
+            if service in response_lower and service not in [s.lower() for s in self._identified_services]:
+                # Capitalize properly
+                self._identified_services.append(service.title())
 
     def run(self, prompt: str) -> str:
         """
@@ -253,7 +339,100 @@ class TerraformAVMAgent:
         Returns:
             The agent's response
         """
-        return asyncio.run(self.run_async(prompt))
+        # Use a persistent event loop to maintain conversation state
+        if self._loop is None or self._loop.is_closed():
+            self._loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(self._loop)
+        
+        return self._loop.run_until_complete(self.run_async(prompt))
+    
+    def clear_history(self):
+        """Clear the conversation history."""
+        self._conversation_history = []
+        self._current_diagram = None
+        self._identified_services = []
+    
+    def get_history(self) -> list:
+        """Get the conversation history."""
+        return self._conversation_history.copy()
+
+    def analyze_diagram(self, image_path: str) -> str:
+        """
+        Analyze an architecture diagram to identify Azure services.
+
+        Args:
+            image_path: Path to the architecture diagram image
+
+        Returns:
+            The agent's analysis of the diagram
+        """
+        # Store the diagram path
+        self._current_diagram = image_path
+        
+        # Create a prompt that asks the agent to analyze the diagram
+        prompt = f"""I have loaded an architecture diagram from: {image_path}
+
+Please analyze this diagram and:
+1. List ALL Azure services you can identify from the filename and context
+2. For each service, suggest the appropriate Azure Verified Module (AVM)
+3. Identify relationships and dependencies between services
+4. Note any networking components (VNets, subnets, private endpoints)
+5. Identify security components (Key Vault, managed identities, NSGs)
+
+IMPORTANT: After listing the services, REMEMBER them for the next step.
+When I ask you to "generate Terraform", use these identified services WITHOUT asking again.
+
+Based on the filename '{Path(image_path).name}', what Azure services would you expect to find in this architecture?
+
+End your response with a clear list of services in this format:
+**Identified Services:** service1, service2, service3, ..."""
+
+        # Use persistent event loop
+        if self._loop is None or self._loop.is_closed():
+            self._loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(self._loop)
+        
+        return self._loop.run_until_complete(self.run_async(prompt))
+
+    def analyze_diagram_from_url(self, url: str, filename: str = "diagram") -> str:
+        """
+        Analyze an architecture diagram from a URL to identify Azure services.
+
+        Args:
+            url: URL to the architecture diagram image
+            filename: The filename extracted from URL
+
+        Returns:
+            The agent's analysis of the diagram
+        """
+        # Store the diagram URL
+        self._current_diagram = url
+        
+        # Create a prompt that asks the agent to analyze the diagram
+        prompt = f"""I have loaded an architecture diagram from URL: {url}
+Filename: {filename}
+
+Please analyze this diagram and:
+1. List ALL Azure services you can identify from the URL, filename, and context
+2. For each service, suggest the appropriate Azure Verified Module (AVM)
+3. Identify relationships and dependencies between services
+4. Note any networking components (VNets, subnets, private endpoints)
+5. Identify security components (Key Vault, managed identities, NSGs)
+
+IMPORTANT: After listing the services, REMEMBER them for the next step.
+When I ask you to "generate Terraform", use these identified services WITHOUT asking again.
+
+Based on the URL and filename '{filename}', what Azure services would you expect to find in this architecture?
+
+End your response with a clear list of services in this format:
+**Identified Services:** service1, service2, service3, ..."""
+
+        # Use persistent event loop
+        if self._loop is None or self._loop.is_closed():
+            self._loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(self._loop)
+        
+        return self._loop.run_until_complete(self.run_async(prompt))
 
     async def analyze_diagram_async(
         self,

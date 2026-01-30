@@ -6,9 +6,12 @@ and their relationships for Terraform code generation.
 """
 
 import base64
+import re
 from pathlib import Path
 from typing import Annotated
+from urllib.parse import urlparse
 
+import httpx
 from pydantic import BaseModel, Field
 
 
@@ -52,8 +55,65 @@ def get_image_media_type(image_path: str) -> str:
         ".jpeg": "image/jpeg",
         ".gif": "image/gif",
         ".webp": "image/webp",
+        ".svg": "image/svg+xml",
     }
     return media_types.get(ext, "image/png")
+
+
+def is_url(path: str) -> bool:
+    """Check if a path is a URL."""
+    try:
+        result = urlparse(path)
+        return result.scheme in ('http', 'https')
+    except:
+        return False
+
+
+def download_image_from_url(url: str) -> tuple[bytes, str]:
+    """
+    Download an image from a URL.
+    
+    Args:
+        url: The URL of the image
+        
+    Returns:
+        Tuple of (image_bytes, media_type)
+    """
+    with httpx.Client(follow_redirects=True, timeout=30.0) as client:
+        response = client.get(url)
+        response.raise_for_status()
+        
+        # Get media type from Content-Type header or URL
+        content_type = response.headers.get('content-type', '')
+        if 'image/' in content_type:
+            media_type = content_type.split(';')[0].strip()
+        else:
+            # Infer from URL
+            media_type = get_image_media_type(url)
+        
+        return response.content, media_type
+
+
+def encode_image_from_url(url: str) -> tuple[str, str]:
+    """
+    Download and encode an image from a URL to base64.
+    
+    Args:
+        url: The URL of the image
+        
+    Returns:
+        Tuple of (base64_encoded_data, media_type)
+    """
+    image_bytes, media_type = download_image_from_url(url)
+    base64_data = base64.b64encode(image_bytes).decode('utf-8')
+    return base64_data, media_type
+
+
+def get_filename_from_url(url: str) -> str:
+    """Extract filename from URL."""
+    parsed = urlparse(url)
+    path = parsed.path
+    return Path(path).name if path else "diagram"
 
 
 # Prompt for analyzing architecture diagrams
