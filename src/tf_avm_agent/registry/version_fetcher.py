@@ -184,12 +184,9 @@ def fetch_latest_version(
     if cached:
         return cached
 
-    try:
-        return asyncio.run(fetch_latest_version_async(source, timeout))
-    except RuntimeError:
-        # If there's already an event loop running, use it
-        loop = asyncio.get_event_loop()
-        return loop.run_until_complete(fetch_latest_version_async(source, timeout))
+    # Use asyncio.run() which is the recommended approach for Python 3.7+
+    # This properly handles event loop creation and cleanup
+    return asyncio.run(fetch_latest_version_async(source, timeout))
 
 
 async def fetch_all_versions_async(
