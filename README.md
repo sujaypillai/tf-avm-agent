@@ -194,24 +194,22 @@ tf-avm-agent chat --help
 
 ```mermaid
 graph TB
-    subgraph "Terraform AVM Agent"
-        CLI["CLI Interface<br/>(Typer + Rich)"]
+    subgraph Agent["Terraform AVM Agent"]
+        direction TB
+        CLI["CLI Interface (Typer + Rich)"]
         
-        subgraph "Agent Core<br/>(Microsoft Agent Framework)"
+        subgraph Core["Agent Core (Microsoft Agent Framework)"]
+            direction LR
             DA["Diagram<br/>Analyzer"]
             AVM["AVM Module<br/>Lookup"]
             TG["Terraform<br/>Generator"]
         end
         
-        Registry["AVM Module Registry<br/>(40+ modules)"]
+        CLI --> Core
     end
     
-    CLI --> DA
-    CLI --> AVM
-    CLI --> TG
-    DA --> Registry
-    AVM --> Registry
-    TG --> Registry
+    Registry["AVM Module Registry (40+ modules)"]
+    Core --> Registry
 ```
 
 ## Development
