@@ -31,6 +31,7 @@ pip install -e ".[dev]"
 - Terraform 1.9+ (for running generated code)
 
 Set your API key:
+
 ```bash
 export OPENAI_API_KEY="your-api-key"
 # Or for Azure OpenAI
@@ -57,6 +58,7 @@ tf-avm-agent chat
 ```
 
 Example conversation:
+
 ```
 You: Generate Terraform for a web application with a database
 
@@ -120,16 +122,16 @@ response = agent.analyze_diagram(
 
 The agent includes knowledge of 40+ Azure Verified Modules across categories:
 
-| Category | Modules |
-|----------|---------|
-| **Compute** | Virtual Machine, VMSS, Container Apps, AKS, Functions, App Service |
+| Category       | Modules                                                                        |
+| -------------- | ------------------------------------------------------------------------------ |
+| **Compute**    | Virtual Machine, VMSS, Container Apps, AKS, Functions, App Service             |
 | **Networking** | Virtual Network, NSG, Application Gateway, Load Balancer, Front Door, Firewall |
-| **Storage** | Storage Account (Blob, Files, Queue, Table) |
-| **Database** | SQL Server, PostgreSQL, MySQL, Cosmos DB, Redis |
-| **Security** | Key Vault, Managed Identity |
-| **Messaging** | Event Hub, Service Bus, Event Grid |
-| **Monitoring** | Log Analytics, Application Insights |
-| **AI** | Cognitive Services, Azure OpenAI, Machine Learning, AI Search |
+| **Storage**    | Storage Account (Blob, Files, Queue, Table)                                    |
+| **Database**   | SQL Server, PostgreSQL, MySQL, Cosmos DB, Redis                                |
+| **Security**   | Key Vault, Managed Identity                                                    |
+| **Messaging**  | Event Hub, Service Bus, Event Grid                                             |
+| **Monitoring** | Log Analytics, Application Insights                                            |
+| **AI**         | Cognitive Services, Azure OpenAI, Machine Learning, AI Search                  |
 
 ## Generated Project Structure
 
@@ -175,12 +177,12 @@ module "storage-account" {
 
 ### Environment Variables
 
-| Variable | Description |
-|----------|-------------|
-| `OPENAI_API_KEY` | OpenAI API key for AI features |
-| `AZURE_OPENAI_ENDPOINT` | Azure OpenAI endpoint |
-| `AZURE_OPENAI_API_KEY` | Azure OpenAI API key |
-| `AZURE_OPENAI_DEPLOYMENT` | Azure OpenAI deployment name |
+| Variable                  | Description                    |
+| ------------------------- | ------------------------------ |
+| `OPENAI_API_KEY`          | OpenAI API key for AI features |
+| `AZURE_OPENAI_ENDPOINT`   | Azure OpenAI endpoint          |
+| `AZURE_OPENAI_API_KEY`    | Azure OpenAI API key           |
+| `AZURE_OPENAI_DEPLOYMENT` | Azure OpenAI deployment name   |
 
 ### CLI Options
 
@@ -196,17 +198,21 @@ tf-avm-agent chat --help
 flowchart TB
     subgraph Agent["Terraform AVM Agent"]
         direction TB
-        CLI["CLI Interface (Typer + Rich)"]
-        
-        subgraph Core["Agent Core (Microsoft Agent Framework)"]
-            direction LR
-            DA["Diagram<br/>Analyzer"]
-            AVM["AVM Module<br/>Lookup"]
-            TG["Terraform<br/>Generator"]
+        CLI["CLI Interface<br/>(Typer + Rich)"]
+
+        subgraph Core["Agent Core"]
+            direction TB
+            MAF["Microsoft Agent Framework"]
+            DA["Diagram Analyzer"]
+            AVM["AVM Module Lookup"]
+            TG["Terraform Generator"]
+            MAF --> DA
+            MAF --> AVM
+            MAF --> TG
         end
-        
-        Registry["AVM Module Registry (40+ modules)"]
-        
+
+        Registry["AVM Module Registry<br/>(105 modules)"]
+
         CLI --> Core
         Core --> Registry
     end
@@ -231,6 +237,8 @@ mypy src/
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
+
+> 🤖 **Fun fact**: This project was built with significant contributions from GitHub Copilot and Claude. They wrote most of the code while the human mostly typed "fix this" and "that doesn't work". The AI agents are still waiting for their contributor badges.
 
 ## License
 
