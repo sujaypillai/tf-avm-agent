@@ -193,7 +193,7 @@ tf-avm-agent chat --help
 ## Architecture
 
 ```mermaid
-graph TB
+flowchart TB
     subgraph Agent["Terraform AVM Agent"]
         direction TB
         CLI["CLI Interface (Typer + Rich)"]
