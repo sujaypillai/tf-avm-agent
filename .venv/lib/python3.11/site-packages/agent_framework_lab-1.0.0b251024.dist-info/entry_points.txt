@@ -1,0 +1,3 @@
+[console_scripts]
+gaia_viewer = agent_framework_lab_gaia:viewer_main
+lightning = agent_framework_lab_lightning:main

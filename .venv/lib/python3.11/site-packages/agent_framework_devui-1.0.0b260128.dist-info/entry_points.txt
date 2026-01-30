@@ -1,0 +1,3 @@
+[console_scripts]
+devui=agent_framework_devui:main
+

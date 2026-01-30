@@ -8,6 +8,7 @@ Usage:
     tf-avm-agent list-modules
     tf-avm-agent search "database"
     tf-avm-agent info "virtual_machine"
+    tf-avm-agent refresh-versions
 """
 
 import asyncio
@@ -19,12 +20,17 @@ import typer
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
+from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.prompt import Confirm, Prompt
 from rich.syntax import Syntax
 from rich.table import Table
 
 from tf_avm_agent.agent import TerraformAVMAgent, generate_terraform
 from tf_avm_agent.registry.avm_modules import AVM_MODULES, get_all_categories
+from tf_avm_agent.registry.version_fetcher import (
+    clear_version_cache,
+    fetch_latest_version,
+)
 from tf_avm_agent.tools.avm_lookup import (
     get_avm_module_info,
     list_available_avm_modules,
@@ -263,6 +269,11 @@ def list_modules_command(
         "--format", "-f",
         help="Output format: table, markdown, or json",
     ),
+    sync: bool = typer.Option(
+        False,
+        "--sync", "-s",
+        help="Sync with Terraform Registry to discover all available modules",
+    ),
 ):
     """
     List available Azure Verified Modules.
@@ -271,7 +282,19 @@ def list_modules_command(
         tf-avm-agent list-modules
         tf-avm-agent list-modules -c networking
         tf-avm-agent list-modules -f json
+        tf-avm-agent list-modules --sync  # Fetch all modules from registry
     """
+    # Sync with registry if requested
+    if sync:
+        from tf_avm_agent.registry.avm_modules import sync_modules_from_registry
+
+        with console.status("[bold green]Syncing modules from Terraform Registry..."):
+            try:
+                sync_modules_from_registry()
+                console.print("[green]✓ Synced modules from registry[/green]\n")
+            except Exception as e:
+                console.print(f"[yellow]Warning: Could not sync from registry: {e}[/yellow]\n")
+
     if format == "json":
         import json
 
@@ -281,7 +304,7 @@ def list_modules_command(
 
         output = {}
         for name, module in modules.items():
-            output[name] = {
+            output[module.registry_name] = {
                 "source": module.source,
                 "version": module.version,
                 "category": module.category,
@@ -305,16 +328,23 @@ def list_modules_command(
         if category:
             modules = {k: v for k, v in modules.items() if v.category == category}
 
-        for name, module in sorted(modules.items(), key=lambda x: (x[1].category, x[0])):
+        # Deduplicate by registry_name, keeping the one with the higher version
+        unique_modules: dict[str, tuple[str, any]] = {}
+        for key, module in modules.items():
+            reg_name = module.registry_name
+            if reg_name not in unique_modules or module.version > unique_modules[reg_name][1].version:
+                unique_modules[reg_name] = (key, module)
+
+        for reg_name, (key, module) in sorted(unique_modules.items(), key=lambda x: (x[1][1].category, x[0])):
             table.add_row(
-                name,
+                module.registry_name,
                 module.category,
                 module.description[:60] + "..." if len(module.description) > 60 else module.description,
                 module.version,
             )
 
         console.print(table)
-        console.print(f"\n[dim]Total: {len(modules)} modules[/dim]")
+        console.print(f"\n[dim]Total: {len(unique_modules)} modules[/dim]")
 
         if not category:
             console.print(f"[dim]Categories: {', '.join(sorted(get_all_categories()))}[/dim]")
@@ -367,6 +397,141 @@ def categories_command():
         table.add_row(category, str(count))
 
     console.print(table)
+
+
+@app.command("refresh-versions")
+def refresh_versions_command(
+    module_name: Optional[str] = typer.Argument(
+        None,
+        help="Specific module to refresh (optional, refreshes all if not provided)",
+    ),
+    clear_cache: bool = typer.Option(
+        False,
+        "--clear-cache", "-c",
+        help="Clear all cached versions before refreshing",
+    ),
+):
+    """
+    Refresh module versions from the Terraform Registry.
+
+    Examples:
+        tf-avm-agent refresh-versions                    # Refresh all modules
+        tf-avm-agent refresh-versions virtual_machine    # Refresh specific module
+        tf-avm-agent refresh-versions --clear-cache      # Clear cache and refresh all
+    """
+    if clear_cache:
+        clear_version_cache()
+        console.print("[yellow]Cleared version cache[/yellow]")
+
+    if module_name:
+        # Refresh specific module
+        from tf_avm_agent.registry.avm_modules import get_module_by_service
+
+        module = get_module_by_service(module_name)
+        if not module:
+            console.print(f"[red]Module '{module_name}' not found[/red]")
+            raise typer.Exit(1)
+
+        with console.status(f"[bold green]Fetching latest version for {module.name}..."):
+            version = fetch_latest_version(module.source)
+
+        if version:
+            console.print(f"[green]✓[/green] {module.name}: {version}")
+        else:
+            console.print(f"[yellow]![/yellow] {module.name}: Failed to fetch (using fallback: {module.version})")
+    else:
+        # Refresh all modules
+        console.print(f"[cyan]Refreshing versions for {len(AVM_MODULES)} modules...[/cyan]\n")
+
+        success_count = 0
+        fail_count = 0
+
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            task = progress.add_task("Fetching versions...", total=len(AVM_MODULES))
+
+            for name, module in AVM_MODULES.items():
+                progress.update(task, description=f"Fetching {name}...")
+                version = fetch_latest_version(module.source)
+
+                if version:
+                    success_count += 1
+                else:
+                    fail_count += 1
+
+                progress.advance(task)
+
+        console.print(f"\n[green]✓ Successfully refreshed: {success_count}[/green]")
+        if fail_count > 0:
+            console.print(f"[yellow]! Failed to fetch: {fail_count} (using fallback versions)[/yellow]")
+
+
+@app.command("sync-modules")
+def sync_modules_command():
+    """
+    Synchronize module list from the official AVM published modules list.
+
+    This command fetches all 105 published AVM modules from the authoritative list
+    at https://azure.github.io/Azure-Verified-Modules/indexes/terraform/tf-resource-modules/
+    and fetches their latest versions from the Terraform Registry.
+
+    Examples:
+        tf-avm-agent sync-modules
+    """
+    from tf_avm_agent.registry.avm_modules import sync_modules_from_registry
+    from tf_avm_agent.registry.module_discovery import (
+        fetch_published_modules_sync,
+        save_discovered_modules,
+    )
+    from tf_avm_agent.registry.published_modules import PUBLISHED_AVM_MODULES
+
+    console.print(Panel("[bold blue]Syncing AVM Modules (Official Published List)[/bold blue]"))
+    console.print(f"[dim]Source: https://azure.github.io/Azure-Verified-Modules/indexes/terraform/tf-resource-modules/[/dim]\n")
+
+    with console.status("[bold green]Fetching versions for all 105 published modules..."):
+        try:
+            discovered = fetch_published_modules_sync()
+            save_discovered_modules(discovered)
+            console.print(f"[green]✓ Fetched {len(discovered)} published AVM modules[/green]")
+        except Exception as e:
+            console.print(f"[red]Error fetching modules: {e}[/red]")
+            raise typer.Exit(1)
+
+    with console.status("[bold green]Updating local registry..."):
+        try:
+            modules = sync_modules_from_registry()
+        except Exception as e:
+            console.print(f"[red]Error syncing modules: {e}[/red]")
+            raise typer.Exit(1)
+
+    # Deduplicate by registry_name for accurate count
+    unique_modules: dict[str, any] = {}
+    for key, module in modules.items():
+        reg_name = module.registry_name
+        if reg_name not in unique_modules or module.version > unique_modules[reg_name].version:
+            unique_modules[reg_name] = module
+
+    console.print(f"[green]✓ Total unique modules: {len(unique_modules)}[/green]")
+
+    # Show category breakdown
+    table = Table(title="Module Categories")
+    table.add_column("Category", style="cyan")
+    table.add_column("Count", style="green")
+
+    categories = {}
+    for module in unique_modules.values():
+        cat = module.category
+        categories[cat] = categories.get(cat, 0) + 1
+
+    for cat, count in sorted(categories.items()):
+        table.add_row(cat, str(count))
+
+    console.print(table)
+
+    console.print(f"\n[dim]Modules cached at ~/.cache/tf-avm-agent/[/dim]")
 
 
 @app.command("version")

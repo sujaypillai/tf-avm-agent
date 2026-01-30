@@ -5,8 +5,11 @@ This module contains a comprehensive registry of available AVM modules for Terra
 including their source paths, required variables, and common configurations.
 """
 
+import logging
 from dataclasses import dataclass, field
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -27,7 +30,7 @@ class AVMModule:
 
     name: str
     source: str
-    version: str
+    version: str  # Fallback version if dynamic fetch fails
     description: str
     category: str
     azure_service: str
@@ -38,6 +41,58 @@ class AVMModule:
     dependencies: list[str] = field(default_factory=list)
     example_config: str = ""
 
+    @property
+    def registry_name(self) -> str:
+        """Get the full AVM module name from the source (e.g., 'avm-res-compute-virtualmachine')."""
+        # Source format: "Azure/avm-res-compute-virtualmachine/azurerm"
+        parts = self.source.split("/")
+        if len(parts) >= 2:
+            return parts[1]
+        return self.name
+
+    def get_latest_version(self, use_cache: bool = True) -> str:
+        """
+        Get the latest version from the Terraform Registry.
+
+        Args:
+            use_cache: Whether to use cached version (default True)
+
+        Returns:
+            The latest version, or the fallback version if fetch fails
+        """
+        from tf_avm_agent.registry.version_fetcher import (
+            fetch_latest_version,
+            get_cached_version,
+        )
+
+        if use_cache:
+            cached = get_cached_version(self.source)
+            if cached:
+                return cached
+
+        latest = fetch_latest_version(self.source)
+        if latest:
+            return latest
+
+        logger.warning(
+            f"Failed to fetch latest version for {self.source}, using fallback: {self.version}"
+        )
+        return self.version
+
+    def get_example_config_with_latest_version(self) -> str:
+        """Get the example config with the latest version substituted."""
+        if not self.example_config:
+            return ""
+
+        latest_version = self.get_latest_version()
+        # Replace version in example config
+        import re
+        return re.sub(
+            r'version\s*=\s*"[^"]*"',
+            f'version = "{latest_version}"',
+            self.example_config,
+        )
+
 
 # Comprehensive AVM Module Registry
 AVM_MODULES: dict[str, AVMModule] = {
@@ -45,7 +100,7 @@ AVM_MODULES: dict[str, AVMModule] = {
     "virtual_machine": AVMModule(
         name="virtual_machine",
         source="Azure/avm-res-compute-virtualmachine/azurerm",
-        version="0.18.0",
+        version="0.20.0",
         description="Deploy Azure Virtual Machines with best practices including availability zones and managed disks",
         category="compute",
         azure_service="Microsoft.Compute/virtualMachines",
@@ -82,7 +137,7 @@ AVM_MODULES: dict[str, AVMModule] = {
         example_config="""
 module "virtual_machine" {
   source  = "Azure/avm-res-compute-virtualmachine/azurerm"
-  version = "0.18.0"
+  version = "0.20.0"
 
   name                       = "vm-example"
   resource_group_name        = azurerm_resource_group.example.name
@@ -1110,3 +1165,83 @@ def search_modules(query: str) -> list[AVMModule]:
             results.append(module)
 
     return results
+
+
+def sync_modules_from_registry() -> dict[str, AVMModule]:
+    """
+    Synchronize modules from the Terraform Registry.
+
+    This function discovers all AVM modules from the registry and merges
+    them with the static registry. Registry entries take precedence for
+    version information while static entries provide detailed variable/output info.
+
+    Returns:
+        Updated AVM_MODULES dictionary
+    """
+    from tf_avm_agent.registry.module_discovery import (
+        fetch_published_modules_sync,
+        generate_azure_service,
+    )
+    from tf_avm_agent.registry.published_modules import PUBLISHED_AVM_MODULES
+
+    logger.info("Fetching all published AVM modules...")
+    discovered = fetch_published_modules_sync()
+    logger.info(f"Fetched {len(discovered)} published AVM modules")
+
+    # Build a map of registry_name -> existing module for reference
+    existing_by_registry_name: dict[str, tuple[str, AVMModule]] = {}
+    for key, module in list(AVM_MODULES.items()):
+        reg_name = module.registry_name
+        if reg_name not in existing_by_registry_name:
+            existing_by_registry_name[reg_name] = (key, module)
+
+    # Create a lookup for published module info
+    published_info = {m["name"]: m for m in PUBLISHED_AVM_MODULES}
+
+    # Update or add modules from published list
+    for mod in discovered:
+        reg_name = mod.name  # This is already the registry name like "avm-res-compute-virtualmachine"
+        info = published_info.get(reg_name, {})
+        category = info.get("category", "other")
+
+        if reg_name in existing_by_registry_name:
+            # Update existing module's version if registry has newer
+            key, existing = existing_by_registry_name[reg_name]
+            if mod.version != "latest" and mod.version > existing.version:
+                existing.version = mod.version
+            # Update category from authoritative source
+            existing.category = category
+        else:
+            # Add new module using registry name as the key
+            key = reg_name
+            AVM_MODULES[key] = AVMModule(
+                name=reg_name,
+                source=mod.source,
+                version=mod.version if mod.version != "latest" else "0.1.0",
+                description=info.get("display", mod.description) or f"Azure Verified Module for {reg_name}",
+                category=category,
+                azure_service=generate_azure_service(mod.name),
+                aliases=[mod.name.replace("avm-res-", "")],
+            )
+            existing_by_registry_name[reg_name] = (key, AVM_MODULES[key])
+
+    return AVM_MODULES
+
+
+def get_all_modules(include_discovered: bool = True) -> dict[str, AVMModule]:
+    """
+    Get all available modules, optionally including dynamically discovered ones.
+
+    Args:
+        include_discovered: Whether to include modules discovered from registry
+
+    Returns:
+        Dictionary of all modules
+    """
+    if include_discovered:
+        try:
+            sync_modules_from_registry()
+        except Exception as e:
+            logger.warning(f"Failed to sync modules from registry: {e}")
+
+    return AVM_MODULES
