@@ -244,7 +244,7 @@ async def generate_terraform(request: GenerateRequest):
 
 
 @app.post("/api/analyze", response_model=DiagramAnalysisResponse)
-async def analyze_diagram(file: UploadFile = File(...)):
+async def analyze_diagram_endpoint(file: UploadFile = File(...)):
     """
     Analyze an uploaded architecture diagram to identify Azure services.
 
@@ -272,11 +272,20 @@ async def analyze_diagram(file: UploadFile = File(...)):
                 use_azure_openai=bool(os.environ.get("AZURE_OPENAI_ENDPOINT")),
             )
 
-            # Analyze the diagram
+            # Use the run method with a prompt to analyze the diagram
+            # This avoids the method signature issue with analyze_diagram
+            filename = file.filename or "diagram"
+            prompt = f"""Please analyze this architecture diagram located at: {tmp_path}
+Filename: {filename}
+
+Identify all Azure services visible in the diagram and list them.
+For each service, suggest the appropriate Azure Verified Module (AVM).
+
+End your response with a clear list of services in this format:
+**Identified Services:** service1, service2, service3, ..."""
+
             loop = asyncio.get_event_loop()
-            response = await loop.run_in_executor(
-                None, agent.analyze_diagram, tmp_path
-            )
+            response = await loop.run_in_executor(None, agent.run, prompt)
 
             # Parse the response to extract services
             # The agent returns a text response with identified services
