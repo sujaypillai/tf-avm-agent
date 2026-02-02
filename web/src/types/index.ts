@@ -14,8 +14,8 @@ export interface ChatRequest {
 
 export interface ChatResponse {
   message: string
-  sessionId: string
-  generatedFiles?: GeneratedFile[]
+  session_id: string
+  generated_files?: GeneratedFile[]
 }
 
 // Service types

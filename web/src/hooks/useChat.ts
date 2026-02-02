@@ -153,8 +153,8 @@ export function useChat(options: UseChatOptions = {}) {
             )
           )
 
-          if (response.generatedFiles) {
-            options.onFilesGenerated?.(response.generatedFiles)
+          if (response.generated_files) {
+            options.onFilesGenerated?.(response.generated_files)
           }
         } catch (err) {
           setMessages((prev) =>
