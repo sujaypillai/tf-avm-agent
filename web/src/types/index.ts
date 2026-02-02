@@ -55,6 +55,7 @@ export interface GenerateOptions {
 export interface GenerateRequest {
   services: string[]
   projectName: string
+  location?: string
   options?: GenerateOptions
 }
 

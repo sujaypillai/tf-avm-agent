@@ -42,9 +42,16 @@ class ApiClient {
 
   // Generation endpoints
   async generateTerraform(request: GenerateRequest): Promise<GenerateResponse> {
+    // Convert camelCase to snake_case for backend
+    const payload = {
+      services: request.services,
+      project_name: request.projectName,
+      location: request.location || "eastus",
+      options: request.options,
+    }
     const response = await this.client.post<GenerateResponse>(
       "/api/generate",
-      request
+      payload
     )
     return response.data
   }

@@ -1,4 +1,5 @@
 import ReactMarkdown from "react-markdown"
+import remarkGfm from "remark-gfm"
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter"
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism"
 import { Copy, Check, User, Bot } from "lucide-react"
@@ -47,6 +48,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
         </div>
         <div className="prose prose-sm dark:prose-invert max-w-none">
           <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
             components={{
               code({ className, children, ...props }) {
                 const match = /language-(\w+)/.exec(className || "")
@@ -97,6 +99,35 @@ export function ChatMessage({ message }: ChatMessageProps) {
               },
               pre({ children }) {
                 return <>{children}</>
+              },
+              table({ children }) {
+                return (
+                  <div className="my-4 overflow-x-auto">
+                    <table className="min-w-full border-collapse border border-border text-sm">
+                      {children}
+                    </table>
+                  </div>
+                )
+              },
+              thead({ children }) {
+                return <thead className="bg-muted">{children}</thead>
+              },
+              th({ children }) {
+                return (
+                  <th className="border border-border px-4 py-2 text-left font-semibold">
+                    {children}
+                  </th>
+                )
+              },
+              td({ children }) {
+                return (
+                  <td className="border border-border px-4 py-2">
+                    {children}
+                  </td>
+                )
+              },
+              tr({ children }) {
+                return <tr className="even:bg-muted/50">{children}</tr>
               },
             }}
           >
