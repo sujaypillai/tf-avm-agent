@@ -9,6 +9,7 @@ from typing import Annotated
 
 from pydantic import Field
 
+from tf_avm_agent.lightning.telemetry import trace_tool
 from tf_avm_agent.registry.avm_modules import (
     AVM_MODULES,
     AVMModule,
@@ -19,6 +20,7 @@ from tf_avm_agent.registry.avm_modules import (
 )
 
 
+@trace_tool("list_available_avm_modules")
 def list_available_avm_modules(
     category: Annotated[
         str | None,
@@ -62,6 +64,7 @@ def list_available_avm_modules(
     return "\n".join(lines)
 
 
+@trace_tool("search_avm_modules")
 def search_avm_modules(
     query: Annotated[str, Field(description="Search query to find relevant AVM modules")],
 ) -> str:
@@ -114,6 +117,7 @@ def search_avm_modules(
     return "\n".join(lines)
 
 
+@trace_tool("get_avm_module_info")
 def get_avm_module_info(
     service_name: Annotated[
         str, Field(description="The name or alias of the Azure service (e.g., 'virtual_machine', 'vm', 'storage', 'aks')")
@@ -223,6 +227,7 @@ def _format_example_value(value) -> str:
         return str(value)
 
 
+@trace_tool("get_module_dependencies")
 def get_module_dependencies(
     service_name: Annotated[str, Field(description="The name of the Azure service")],
 ) -> str:
@@ -260,6 +265,7 @@ def get_module_dependencies(
     return "\n".join(lines)
 
 
+@trace_tool("recommend_modules_for_architecture")
 def recommend_modules_for_architecture(
     services: Annotated[
         list[str],
