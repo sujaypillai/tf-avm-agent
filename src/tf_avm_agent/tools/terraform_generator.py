@@ -14,7 +14,6 @@ AVM Best Practices Applied:
 """
 
 import os
-import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -22,7 +21,9 @@ from typing import Annotated
 
 from pydantic import BaseModel, Field
 
+from tf_avm_agent.lightning.telemetry import trace_tool
 from tf_avm_agent.registry.avm_modules import AVMModule, get_module_by_service
+from tf_avm_agent.tools.terraform_utils import is_terraform_available
 
 
 class TerraformModuleConfig(BaseModel):
@@ -62,76 +63,82 @@ class TerraformProjectOutput(BaseModel):
 def terraform_fmt(content: str) -> str:
     """
     Format Terraform content using 'terraform fmt'.
-    
+
     Args:
         content: The Terraform HCL content to format
-        
+
     Returns:
         Formatted content, or original if terraform is not available
     """
-    # Check if terraform is available
-    if not shutil.which("terraform"):
+    if not is_terraform_available():
         return content
-    
+
+    temp_path = None
     try:
-        # Create a temp file with the content
         with tempfile.NamedTemporaryFile(mode='w', suffix='.tf', delete=False) as f:
             f.write(content)
             temp_path = f.name
-        
-        # Run terraform fmt
+
         subprocess.run(
             ["terraform", "fmt", temp_path],
             capture_output=True,
             timeout=10,
         )
-        
-        # Read back the formatted content
+
         with open(temp_path, 'r') as f:
             formatted = f.read()
-        
-        # Clean up
-        os.unlink(temp_path)
+
         return formatted
-        
+
     except (subprocess.TimeoutExpired, subprocess.SubprocessError, OSError):
         return content
+    finally:
+        if temp_path:
+            try:
+                os.unlink(temp_path)
+            except OSError:
+                pass
 
 
 def validate_terraform_syntax(content: str) -> tuple[bool, str]:
     """
     Validate Terraform syntax using 'terraform fmt -check'.
-    
+
     Args:
         content: The Terraform HCL content to validate
-        
+
     Returns:
         Tuple of (is_valid, error_message)
     """
-    if not shutil.which("terraform"):
+    if not is_terraform_available():
         return True, "terraform not installed - skipping validation"
-    
+
+    temp_path = None
     try:
         with tempfile.NamedTemporaryFile(mode='w', suffix='.tf', delete=False) as f:
             f.write(content)
             temp_path = f.name
-        
+
         result = subprocess.run(
             ["terraform", "fmt", "-check", "-diff", temp_path],
             capture_output=True,
             text=True,
             timeout=10,
         )
-        
-        os.unlink(temp_path)
-        
+
         if result.returncode == 0:
             return True, "Terraform syntax is valid and properly formatted"
         else:
             return False, f"Formatting issues: {result.stdout}"
-            
+
     except (subprocess.TimeoutExpired, subprocess.SubprocessError, OSError) as e:
         return True, f"Could not validate: {e}"
+    finally:
+        if temp_path:
+            try:
+                os.unlink(temp_path)
+            except OSError:
+                pass
 
 def generate_terraform_module(
     service_name: Annotated[str, Field(description="The Azure service name to generate code for")],
@@ -532,6 +539,7 @@ def generate_outputs_tf(
     return "\n".join(lines)
 
 
+@trace_tool("generate_terraform_project")
 def generate_terraform_project(
     project_name: Annotated[str, Field(description="Name of the project")],
     services: Annotated[list[str], Field(description="List of Azure services to include")],

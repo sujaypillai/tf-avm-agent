@@ -9,6 +9,7 @@ import asyncio
 import base64
 import json
 import os
+import uuid
 from pathlib import Path
 from typing import Annotated
 
@@ -46,12 +47,18 @@ from tf_avm_agent.tools.diagram_analyzer import (
     get_image_media_type,
     parse_diagram_analysis_response,
 )
+from tf_avm_agent.lightning.config import MODULE_COUNT_REWARD_THRESHOLD
+from tf_avm_agent.lightning.telemetry import (
+    TerraformAgentTracer,
+    set_global_tracer,
+)
 from tf_avm_agent.tools.terraform_generator import (
     TerraformModuleConfig,
     TerraformProjectConfig,
     TerraformProjectOutput,
     generate_terraform_module,
     generate_terraform_project,
+    validate_terraform_syntax,
     write_terraform_files,
 )
 
@@ -148,6 +155,7 @@ class TerraformAVMAgent:
         azure_endpoint: str | None = None,
         azure_deployment: str | None = None,
         api_key: str | None = None,
+        enable_lightning: bool = False,
     ):
         """
         Initialize the Terraform AVM Agent.
@@ -157,15 +165,16 @@ class TerraformAVMAgent:
             azure_endpoint: Azure OpenAI endpoint (required if use_azure_openai=True)
             azure_deployment: Azure OpenAI deployment name
             api_key: API key (uses environment variable if not provided)
+            enable_lightning: Enable Agent Lightning telemetry and RL training
         """
         self.use_azure_openai = use_azure_openai
-        
+
         # Read from environment variables if not provided
         if use_azure_openai:
             self.azure_endpoint = azure_endpoint or os.environ.get("AZURE_OPENAI_ENDPOINT")
             # Support multiple env var names for deployment
             self.azure_deployment = (
-                azure_deployment 
+                azure_deployment
                 or os.environ.get("AZURE_OPENAI_DEPLOYMENT")
                 or os.environ.get("AZURE_OPENAI_CHAT_DEPLOYMENT_NAME")
             )
@@ -174,12 +183,18 @@ class TerraformAVMAgent:
             self.azure_endpoint = azure_endpoint
             self.azure_deployment = azure_deployment
             self.api_key = api_key or os.environ.get("OPENAI_API_KEY")
-        
+
         self._agent = None
         self._loop = None
         self._conversation_history = []
         self._current_diagram = None
         self._identified_services = []
+
+        # Agent Lightning integration
+        self._enable_lightning = enable_lightning
+        self._tracer = TerraformAgentTracer(enabled=enable_lightning)
+        if enable_lightning:
+            set_global_tracer(self._tracer)
 
     def _get_tools(self) -> list:
         """Get the list of tools for the agent."""
@@ -272,43 +287,62 @@ class TerraformAVMAgent:
         Returns:
             The agent's response
         """
-        if self._agent is None:
-            self._agent = await self._create_agent()
+        task_id = str(uuid.uuid4())
+        self._tracer.start_task(
+            task_id=task_id,
+            input_data={"prompt": prompt[:500]},
+        )
 
-        # Add user message to history
-        self._conversation_history.append({"role": "user", "content": prompt})
-        
-        # Build context from conversation history to maintain state
-        # Include previous exchanges so the agent remembers identified services
-        context_prompt = prompt
-        if len(self._conversation_history) > 1:
-            # Build conversation context
-            history_context = "\n\n--- CONVERSATION HISTORY (for context) ---\n"
-            for msg in self._conversation_history[:-1]:  # Exclude current message
-                role = "User" if msg["role"] == "user" else "Assistant"
-                # Truncate long messages to avoid token limits
-                content = msg["content"][:2000] + "..." if len(msg["content"]) > 2000 else msg["content"]
-                history_context += f"\n{role}: {content}\n"
-            history_context += "\n--- END HISTORY ---\n\n"
-            history_context += f"Current request: {prompt}"
-            
-            # Add reminder about identified services if any
-            if self._identified_services:
-                history_context += f"\n\nPreviously identified services: {', '.join(self._identified_services)}"
-            
-            context_prompt = history_context
-        
-        # Run with conversation history context
-        response = await self._agent.run(context_prompt)
-        response_text = response.text if hasattr(response, "text") else str(response)
-        
-        # Extract and store any identified services from the response
-        self._extract_services_from_response(response_text)
-        
-        # Add assistant response to history
-        self._conversation_history.append({"role": "assistant", "content": response_text})
-        
-        return response_text
+        try:
+            if self._agent is None:
+                self._agent = await self._create_agent()
+
+            # Add user message to history
+            self._conversation_history.append({"role": "user", "content": prompt})
+
+            # Build context from conversation history to maintain state
+            # Include previous exchanges so the agent remembers identified services
+            context_prompt = prompt
+            if len(self._conversation_history) > 1:
+                # Build conversation context
+                history_context = "\n\n--- CONVERSATION HISTORY (for context) ---\n"
+                for msg in self._conversation_history[:-1]:  # Exclude current message
+                    role = "User" if msg["role"] == "user" else "Assistant"
+                    # Truncate long messages to avoid token limits
+                    content = msg["content"][:2000] + "..." if len(msg["content"]) > 2000 else msg["content"]
+                    history_context += f"\n{role}: {content}\n"
+                history_context += "\n--- END HISTORY ---\n\n"
+                history_context += f"Current request: {prompt}"
+
+                # Add reminder about identified services if any
+                if self._identified_services:
+                    history_context += f"\n\nPreviously identified services: {', '.join(self._identified_services)}"
+
+                context_prompt = history_context
+
+            # Run with conversation history context
+            response = await self._agent.run(context_prompt)
+            response_text = response.text if hasattr(response, "text") else str(response)
+
+            # Emit LLM response action
+            self._tracer.emit_action(
+                action_type="llm_response",
+                input_data={"prompt_length": len(context_prompt)},
+                output_data={"response_length": len(response_text)},
+            )
+
+            # Extract and store any identified services from the response
+            self._extract_services_from_response(response_text)
+
+            # Add assistant response to history
+            self._conversation_history.append({"role": "assistant", "content": response_text})
+
+            self._tracer.end_task(success=True, output=response_text)
+            return response_text
+
+        except Exception as e:
+            self._tracer.end_task(success=False, output=str(e))
+            raise
     
     def _extract_services_from_response(self, response: str):
         """Extract and store identified Azure services from agent response."""
@@ -528,16 +562,51 @@ Steps:
         Returns:
             TerraformProjectOutput with generated files
         """
+        self._tracer.emit_action(
+            action_type="generate_from_services",
+            input_data={
+                "services": services,
+                "project_name": project_name,
+                "location": location,
+            },
+        )
+
         result = generate_terraform_project(
             project_name=project_name,
             services=services,
             location=location,
         )
 
+        self._emit_validation_reward(result)
+
         if output_dir:
             write_terraform_files(output_dir, result)
 
         return result
+
+    def _emit_validation_reward(self, result: TerraformProjectOutput) -> None:
+        """Emit reward based on Terraform validation."""
+        main_tf = next((f for f in result.files if f.filename == "main.tf"), None)
+        if not main_tf:
+            self._tracer.emit_reward(reward=-1.0, metadata={"error": "no_main_tf"})
+            return
+
+        is_valid, message = validate_terraform_syntax(main_tf.content)
+        reward = 1.0 if is_valid else -0.5
+
+        module_count = main_tf.content.count('module "')
+        if module_count == 0:
+            reward -= 0.3
+
+        self._tracer.emit_reward(
+            reward=reward,
+            metadata={
+                "validation_passed": is_valid,
+                "validation_message": message,
+                "module_count": module_count,
+                "file_count": len(result.files),
+            },
+        )
 
     def list_modules(self, category: str | None = None) -> str:
         """

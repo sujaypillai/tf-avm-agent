@@ -45,6 +45,9 @@ dev = [
     "ruff>=0.4.0",
     "mypy>=1.10.0",
 ]
+lightning = [
+    "agentlightning>=0.1.0",
+]
 
 [project.scripts]
 tf-avm-agent = "tf_avm_agent.cli:app"

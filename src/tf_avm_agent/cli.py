@@ -626,6 +626,96 @@ def version_command():
     console.print(f"tf-avm-agent version {__version__}")
 
 
+@app.command("train")
+def train_command(
+    dataset: str = typer.Option(
+        "./data/training.jsonl",
+        "--dataset",
+        "-d",
+        help="Path to training dataset (JSONL)",
+    ),
+    output: str = typer.Option(
+        "./models/tf-avm-agent-rl",
+        "--output",
+        "-o",
+        help="Output directory for trained model",
+    ),
+    epochs: int = typer.Option(
+        3,
+        "--epochs",
+        "-e",
+        help="Number of training epochs",
+    ),
+    batch_size: int = typer.Option(
+        32,
+        "--batch-size",
+        "-b",
+        help="Training batch size",
+    ),
+    generate_dataset: bool = typer.Option(
+        False,
+        "--generate",
+        help="Generate training dataset before training",
+    ),
+):
+    """Train the agent using Agent Lightning RL."""
+    from tf_avm_agent.lightning import LIGHTNING_AVAILABLE
+
+    if not LIGHTNING_AVAILABLE:
+        console.print(
+            "[bold red]Error: agentlightning is not installed. "
+            "Install with: pip install tf-avm-agent[lightning][/bold red]"
+        )
+        raise typer.Exit(code=1)
+
+    from tf_avm_agent.lightning.dataset import TerraformTrainingDataset
+    from tf_avm_agent.lightning.train import create_training_config, run_training
+
+    if generate_dataset:
+        with console.status("[bold green]Generating dataset..."):
+            ds = TerraformTrainingDataset()
+            count = ds.save_to_jsonl(dataset)
+        console.print(f"[green]Generated {count} training examples[/green]")
+
+    config = create_training_config(batch_size=batch_size, epochs=epochs)
+    console.print("[bold blue]Starting Agent Lightning training...[/bold blue]")
+
+    try:
+        metrics = run_training(dataset, output, config)
+        console.print("\n[bold green]Training Complete![/bold green]")
+        console.print(f"Model saved to: {output}")
+        console.print(f"Final metrics: {metrics}")
+    except Exception as e:
+        console.print(f"[bold red]Training failed: {e}[/bold red]")
+        raise typer.Exit(code=1)
+
+
+@app.command("evaluate")
+def evaluate_command(
+    model_path: str = typer.Argument(..., help="Path to trained model"),
+    test_file: Optional[str] = typer.Option(
+        None,
+        "--test",
+        "-t",
+        help="Test dataset file (JSONL)",
+    ),
+):
+    """Evaluate a trained model."""
+    from tf_avm_agent.lightning import LIGHTNING_AVAILABLE
+
+    if not LIGHTNING_AVAILABLE:
+        console.print(
+            "[bold red]Error: agentlightning is not installed. "
+            "Install with: pip install tf-avm-agent[lightning][/bold red]"
+        )
+        raise typer.Exit(code=1)
+
+    console.print(f"[cyan]Evaluating model from {model_path}...[/cyan]")
+    if test_file:
+        console.print(f"[dim]Using test file: {test_file}[/dim]")
+    console.print("[yellow]Evaluation not yet implemented.[/yellow]")
+
+
 def main():
     """Main entry point."""
     app()
