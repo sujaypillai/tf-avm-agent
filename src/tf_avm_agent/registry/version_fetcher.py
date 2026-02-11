@@ -184,9 +184,17 @@ def fetch_latest_version(
     if cached:
         return cached
 
-    # Use asyncio.run() which is the recommended approach for Python 3.7+
-    # This properly handles event loop creation and cleanup
-    return asyncio.run(fetch_latest_version_async(source, timeout))
+    # Handle both standalone and nested async contexts (Python 3.10+ compatible)
+    try:
+        asyncio.get_running_loop()
+        # Already in an async context - run in a separate thread to avoid conflict
+        import concurrent.futures
+
+        with concurrent.futures.ThreadPoolExecutor() as pool:
+            return pool.submit(asyncio.run, fetch_latest_version_async(source, timeout)).result()
+    except RuntimeError:
+        # No running event loop - safe to use asyncio.run()
+        return asyncio.run(fetch_latest_version_async(source, timeout))
 
 
 async def fetch_all_versions_async(

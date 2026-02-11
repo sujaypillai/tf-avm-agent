@@ -7,7 +7,9 @@ Built using the Microsoft Agent Framework.
 
 import asyncio
 import base64
+import concurrent.futures
 import json
+import logging
 import os
 import uuid
 from pathlib import Path
@@ -27,6 +29,8 @@ except ImportError:
     ChatAgent = None
     AzureOpenAIChatClient = None
     OpenAIChatClient = None
+
+logger = logging.getLogger(__name__)
 
 from tf_avm_agent.registry.avm_modules import (
     AVM_MODULES,
@@ -168,6 +172,13 @@ class TerraformAVMAgent:
             enable_lightning: Enable Agent Lightning telemetry and RL training
         """
         self.use_azure_openai = use_azure_openai
+
+        if api_key is not None:
+            logger.warning(
+                "API key passed as a string parameter. "
+                "Prefer setting it via environment variables "
+                "(OPENAI_API_KEY or AZURE_OPENAI_API_KEY) to avoid accidental exposure."
+            )
 
         # Read from environment variables if not provided
         if use_azure_openai:
@@ -363,6 +374,24 @@ class TerraformAVMAgent:
                 # Capitalize properly
                 self._identified_services.append(service.title())
 
+    def _run_sync(self, coro):
+        """
+        Run an async coroutine synchronously, handling nested event loops.
+
+        Uses a persistent event loop for conversation state. If already inside
+        an async context, delegates to a thread to avoid conflicts (Python 3.10+).
+        """
+        try:
+            asyncio.get_running_loop()
+            # Already in an async context - run in a separate thread
+            with concurrent.futures.ThreadPoolExecutor() as pool:
+                return pool.submit(asyncio.run, coro).result()
+        except RuntimeError:
+            # No running event loop - use a persistent loop for conversation state
+            if self._loop is None or self._loop.is_closed():
+                self._loop = asyncio.new_event_loop()
+            return self._loop.run_until_complete(coro)
+
     def run(self, prompt: str) -> str:
         """
         Run the agent with a text prompt (synchronous wrapper).
@@ -373,12 +402,7 @@ class TerraformAVMAgent:
         Returns:
             The agent's response
         """
-        # Use a persistent event loop to maintain conversation state
-        if self._loop is None or self._loop.is_closed():
-            self._loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(self._loop)
-        
-        return self._loop.run_until_complete(self.run_async(prompt))
+        return self._run_sync(self.run_async(prompt))
     
     def clear_history(self):
         """Clear the conversation history."""
@@ -421,12 +445,7 @@ Based on the filename '{Path(image_path).name}', what Azure services would you e
 End your response with a clear list of services in this format:
 **Identified Services:** service1, service2, service3, ..."""
 
-        # Use persistent event loop
-        if self._loop is None or self._loop.is_closed():
-            self._loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(self._loop)
-        
-        return self._loop.run_until_complete(self.run_async(prompt))
+        return self._run_sync(self.run_async(prompt))
 
     def analyze_diagram_from_url(self, url: str, filename: str = "diagram") -> str:
         """
@@ -461,12 +480,7 @@ Based on the URL and filename '{filename}', what Azure services would you expect
 End your response with a clear list of services in this format:
 **Identified Services:** service1, service2, service3, ..."""
 
-        # Use persistent event loop
-        if self._loop is None or self._loop.is_closed():
-            self._loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(self._loop)
-        
-        return self._loop.run_until_complete(self.run_async(prompt))
+        return self._run_sync(self.run_async(prompt))
 
     async def analyze_diagram_async(
         self,
@@ -536,7 +550,7 @@ Steps:
         Returns:
             The agent's response
         """
-        return asyncio.run(
+        return self._run_sync(
             self.analyze_diagram_async(image_path, project_name, location, output_dir)
         )
 
