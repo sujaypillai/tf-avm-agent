@@ -22,6 +22,7 @@ from fastapi import FastAPI, File, HTTPException, Query, UploadFile, WebSocket, 
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+from tf_avm_agent import __version__
 from tf_avm_agent.agent import TerraformAVMAgent
 from tf_avm_agent.registry.avm_modules import (
     AVM_MODULES,
@@ -59,7 +60,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="TF AVM Agent API",
     description="API for generating Terraform code using Azure Verified Modules",
-    version="0.1.0",
+    version=__version__,
     lifespan=lifespan,
 )
 

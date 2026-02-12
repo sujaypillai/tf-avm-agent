@@ -1,6 +1,7 @@
 """Tests for the CLI chat command."""
 
 import os
+import re
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -10,6 +11,11 @@ from tf_avm_agent.cli import app
 
 
 runner = CliRunner()
+
+
+def _strip_ansi(text: str) -> str:
+    """Remove ANSI escape codes from text."""
+    return re.sub(r"\x1b\[[0-9;]*m", "", text)
 
 
 class TestChatCommand:
@@ -25,7 +31,7 @@ class TestChatCommand:
         """Test that help shows Azure OpenAI option."""
         result = runner.invoke(app, ["chat", "--help"])
         assert result.exit_code == 0
-        assert "--azure-openai" in result.output
+        assert "--azure-openai" in _strip_ansi(result.output)
 
     def test_chat_quit_command(self):
         """Test that quit command exits the chat."""
@@ -78,7 +84,7 @@ class TestChatAzureOpenAIConfiguration:
 
     def test_chat_with_azure_openai_flag(self):
         """Test chat with --azure-openai flag."""
-        with patch("tf_avm_agent.cli.TerraformAVMAgent") as mock_agent:
+        with patch("tf_avm_agent.agent.TerraformAVMAgent") as mock_agent:
             mock_instance = MagicMock()
             mock_agent.return_value = mock_instance
             
@@ -90,7 +96,7 @@ class TestChatAzureOpenAIConfiguration:
     @patch.dict(os.environ, {"AZURE_OPENAI_ENDPOINT": ""}, clear=False)
     def test_chat_without_azure_openai_flag(self):
         """Test chat without --azure-openai flag uses OpenAI when no env var set."""
-        with patch("tf_avm_agent.cli.TerraformAVMAgent") as mock_agent:
+        with patch("tf_avm_agent.agent.TerraformAVMAgent") as mock_agent:
             mock_instance = MagicMock()
             mock_agent.return_value = mock_instance
             
@@ -102,7 +108,7 @@ class TestChatAzureOpenAIConfiguration:
     @patch.dict(os.environ, {"AZURE_OPENAI_ENDPOINT": "https://test.openai.azure.com"})
     def test_chat_auto_detects_azure_from_env(self):
         """Test that chat auto-detects Azure OpenAI when env var is set."""
-        with patch("tf_avm_agent.cli.TerraformAVMAgent") as mock_agent:
+        with patch("tf_avm_agent.agent.TerraformAVMAgent") as mock_agent:
             mock_instance = MagicMock()
             mock_agent.return_value = mock_instance
             
@@ -120,7 +126,7 @@ class TestChatAgentInteraction:
 
     def test_chat_sends_user_input_to_agent(self):
         """Test that user input is sent to the agent."""
-        with patch("tf_avm_agent.cli.TerraformAVMAgent") as mock_agent_class:
+        with patch("tf_avm_agent.agent.TerraformAVMAgent") as mock_agent_class:
             mock_agent = MagicMock()
             mock_agent.run.return_value = "Test response from agent"
             mock_agent_class.return_value = mock_agent
@@ -133,7 +139,7 @@ class TestChatAgentInteraction:
 
     def test_chat_displays_agent_response(self):
         """Test that agent response is displayed to user."""
-        with patch("tf_avm_agent.cli.TerraformAVMAgent") as mock_agent_class:
+        with patch("tf_avm_agent.agent.TerraformAVMAgent") as mock_agent_class:
             mock_agent = MagicMock()
             mock_agent.run.return_value = "Here is your Terraform code for Azure VM"
             mock_agent_class.return_value = mock_agent
@@ -144,7 +150,7 @@ class TestChatAgentInteraction:
 
     def test_chat_handles_agent_error(self):
         """Test that chat handles agent errors gracefully."""
-        with patch("tf_avm_agent.cli.TerraformAVMAgent") as mock_agent_class:
+        with patch("tf_avm_agent.agent.TerraformAVMAgent") as mock_agent_class:
             mock_agent = MagicMock()
             mock_agent.run.side_effect = Exception("API connection failed")
             mock_agent_class.return_value = mock_agent
@@ -157,7 +163,7 @@ class TestChatAgentInteraction:
 
     def test_chat_multiple_interactions(self):
         """Test multiple interactions in a single chat session."""
-        with patch("tf_avm_agent.cli.TerraformAVMAgent") as mock_agent_class:
+        with patch("tf_avm_agent.agent.TerraformAVMAgent") as mock_agent_class:
             mock_agent = MagicMock()
             mock_agent.run.side_effect = ["Response 1", "Response 2"]
             mock_agent_class.return_value = mock_agent
@@ -328,12 +334,12 @@ class TestLoadDiagramCommand:
 
     def test_load_command_with_url_format(self):
         """Test load command recognizes URL format."""
-        with patch("tf_avm_agent.cli.TerraformAVMAgent") as mock_agent_class:
+        with patch("tf_avm_agent.agent.TerraformAVMAgent") as mock_agent_class:
             mock_agent = MagicMock()
             mock_agent.analyze_diagram_from_url.return_value = "Analyzed diagram from URL"
             mock_agent_class.return_value = mock_agent
-            
-            with patch("tf_avm_agent.cli.encode_image_from_url") as mock_download:
+
+            with patch("tf_avm_agent.tools.diagram_analyzer.encode_image_from_url") as mock_download:
                 mock_download.return_value = ("base64data", "image/png")
                 
                 result = runner.invoke(
@@ -348,15 +354,15 @@ class TestLoadDiagramCommand:
     def test_load_command_with_local_file(self):
         """Test load command with local file path."""
         import tempfile
-        
+
         # Create a temporary image file
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
             # Write minimal PNG header
             f.write(b'\x89PNG\r\n\x1a\n' + b'\x00' * 100)
             temp_path = f.name
-        
+
         try:
-            with patch("tf_avm_agent.cli.TerraformAVMAgent") as mock_agent_class:
+            with patch("tf_avm_agent.agent.TerraformAVMAgent") as mock_agent_class:
                 mock_agent = MagicMock()
                 mock_agent.analyze_diagram.return_value = "Analyzed local diagram"
                 mock_agent_class.return_value = mock_agent
@@ -442,7 +448,7 @@ class TestConversationHistory:
 
     def test_clear_command_in_chat(self):
         """Test clear command clears conversation history."""
-        with patch("tf_avm_agent.cli.TerraformAVMAgent") as mock_agent_class:
+        with patch("tf_avm_agent.agent.TerraformAVMAgent") as mock_agent_class:
             mock_agent = MagicMock()
             mock_agent_class.return_value = mock_agent
             

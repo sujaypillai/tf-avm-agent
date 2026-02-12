@@ -13,16 +13,31 @@ An AI agent built with the Microsoft Agent Framework that generates Terraform co
 ## Installation
 
 ```bash
-# Clone the repository
-git clone https://github.com/your-org/tf-avm-agent.git
-cd tf-avm-agent
+# Core CLI (list-modules, search, info, version, etc.)
+pip install tf-avm-agent
 
-# Install dependencies
-pip install -e .
+# With AI agent support (chat, generate --interactive, diagram analysis)
+pip install "tf-avm-agent[agent]"
 
-# Or install with development dependencies
+# With API server
+pip install "tf-avm-agent[api]"
+
+# Everything
+pip install "tf-avm-agent[all]"
+
+# Development
 pip install -e ".[dev]"
 ```
+
+### Extras
+
+| Extra | What it adds |
+|-------|-------------|
+| `agent` | AI agent, diagram analysis (agent-framework, azure-identity, pillow, jinja2) |
+| `api` | REST API server (fastapi, uvicorn) |
+| `lightning` | RL training (agentlightning) |
+| `all` | All of the above |
+| `dev` | `all` + pytest, ruff, mypy, build, twine |
 
 ### Prerequisites
 

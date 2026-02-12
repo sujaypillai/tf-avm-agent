@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "tf-avm-agent"
-version = "0.1.0"
+dynamic = ["version"]
 description = "An AI agent that generates Terraform code using Azure Verified Modules (AVM)"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -23,35 +23,54 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
 ]
 dependencies = [
+    "pydantic>=2.0.0",
+    "httpx>=0.27.0",
+    "rich>=13.0.0",
+    "typer>=0.12.0",
+]
+
+[project.optional-dependencies]
+agent = [
     "agent-framework>=1.0.0b260128",
     "agent-framework-azure-ai>=1.0.0b260128",
     "agent-framework-durabletask>=1.0.0b260128",
     "azure-identity>=1.15.0",
-    "pydantic>=2.0.0",
-    "jinja2>=3.1.0",
     "pillow>=10.0.0",
-    "httpx>=0.27.0",
-    "rich>=13.0.0",
-    "typer>=0.12.0",
+    "jinja2>=3.1.0",
+]
+api = [
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.32.0",
     "python-multipart>=0.0.12",
 ]
-
-[project.optional-dependencies]
+lightning = [
+    "agentlightning>=0.1.0",
+]
+all = [
+    "tf-avm-agent[agent,api,lightning]",
+]
 dev = [
+    "tf-avm-agent[agent,api]",
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",
     "ruff>=0.4.0",
     "mypy>=1.10.0",
-]
-lightning = [
-    "agentlightning>=0.1.0",
+    "build",
+    "twine",
 ]
 
 [project.scripts]
 tf-avm-agent = "tf_avm_agent.cli:app"
-tf-avm-api = "tf_avm_agent.api:main"
+tf-avm-api = "tf_avm_agent.cli:run_api"
+
+[project.urls]
+Homepage = "https://github.com/sujaypillai/tf-avm-agent"
+Repository = "https://github.com/sujaypillai/tf-avm-agent"
+Issues = "https://github.com/sujaypillai/tf-avm-agent/issues"
+Changelog = "https://github.com/sujaypillai/tf-avm-agent/releases"
+
+[tool.hatch.version]
+path = "src/tf_avm_agent/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/tf_avm_agent"]
@@ -62,6 +81,11 @@ target-version = "py310"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "W"]
+ignore = [
+    "E402",  # module-import-not-at-top-of-file (agent.py logger before imports)
+    "E501",  # line-too-long (widespread, fix in dedicated cleanup PR)
+    "E722",  # bare-except (diagram_analyzer.py)
+]
 
 [tool.mypy]
 python_version = "3.10"
