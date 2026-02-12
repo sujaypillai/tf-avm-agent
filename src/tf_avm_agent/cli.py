@@ -11,9 +11,7 @@ Usage:
     tf-avm-agent refresh-versions
 """
 
-import asyncio
 import os
-import sys
 from pathlib import Path
 from typing import Optional
 
@@ -307,7 +305,7 @@ def chat_command(
                         with console.status("[bold green]Analyzing diagram..."):
                             response = agent.analyze_diagram_from_url(source, filename)
 
-                        console.print(f"\n[bold green]Agent[/bold green]:")
+                        console.print("\n[bold green]Agent[/bold green]:")
                         console.print(Markdown(response))
                         continue
                     else:
@@ -336,7 +334,7 @@ def chat_command(
                         with console.status("[bold green]Analyzing diagram..."):
                             response = agent.analyze_diagram(file_path)
 
-                        console.print(f"\n[bold green]Agent[/bold green]:")
+                        console.print("\n[bold green]Agent[/bold green]:")
                         console.print(Markdown(response))
                         continue
                 except Exception as e:
@@ -366,7 +364,7 @@ def chat_command(
             with console.status("[bold green]Thinking..."):
                 response = agent.run(user_input)
 
-            console.print(f"\n[bold green]Agent[/bold green]:")
+            console.print("\n[bold green]Agent[/bold green]:")
             console.print(Markdown(response))
 
         except KeyboardInterrupt:
@@ -604,10 +602,9 @@ def sync_modules_command():
         fetch_published_modules_sync,
         save_discovered_modules,
     )
-    from tf_avm_agent.registry.published_modules import PUBLISHED_AVM_MODULES
 
     console.print(Panel("[bold blue]Syncing AVM Modules (Official Published List)[/bold blue]"))
-    console.print(f"[dim]Source: https://azure.github.io/Azure-Verified-Modules/indexes/terraform/tf-resource-modules/[/dim]\n")
+    console.print("[dim]Source: https://azure.github.io/Azure-Verified-Modules/indexes/terraform/tf-resource-modules/[/dim]\n")
 
     with console.status("[bold green]Fetching versions for all 105 published modules..."):
         try:
@@ -649,7 +646,7 @@ def sync_modules_command():
 
     console.print(table)
 
-    console.print(f"\n[dim]Modules cached at ~/.cache/tf-avm-agent/[/dim]")
+    console.print("\n[dim]Modules cached at ~/.cache/tf-avm-agent/[/dim]")
 
 
 @app.command("version")

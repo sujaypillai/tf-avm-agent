@@ -50,7 +50,7 @@ all = [
     "tf-avm-agent[agent,api,lightning]",
 ]
 dev = [
-    "tf-avm-agent[all]",
+    "tf-avm-agent[agent,api]",
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",
     "ruff>=0.4.0",
@@ -81,6 +81,11 @@ target-version = "py310"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "W"]
+ignore = [
+    "E402",  # module-import-not-at-top-of-file (agent.py logger before imports)
+    "E501",  # line-too-long (widespread, fix in dedicated cleanup PR)
+    "E722",  # bare-except (diagram_analyzer.py)
+]
 
 [tool.mypy]
 python_version = "3.10"

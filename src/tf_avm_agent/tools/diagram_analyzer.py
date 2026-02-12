@@ -72,17 +72,17 @@ def is_url(path: str) -> bool:
 def download_image_from_url(url: str) -> tuple[bytes, str]:
     """
     Download an image from a URL.
-    
+
     Args:
         url: The URL of the image
-        
+
     Returns:
         Tuple of (image_bytes, media_type)
     """
     with httpx.Client(follow_redirects=True, timeout=30.0) as client:
         response = client.get(url)
         response.raise_for_status()
-        
+
         # Get media type from Content-Type header or URL
         content_type = response.headers.get('content-type', '')
         if 'image/' in content_type:
@@ -90,17 +90,17 @@ def download_image_from_url(url: str) -> tuple[bytes, str]:
         else:
             # Infer from URL
             media_type = get_image_media_type(url)
-        
+
         return response.content, media_type
 
 
 def encode_image_from_url(url: str) -> tuple[str, str]:
     """
     Download and encode an image from a URL to base64.
-    
+
     Args:
         url: The URL of the image
-        
+
     Returns:
         Tuple of (base64_encoded_data, media_type)
     """
@@ -252,7 +252,6 @@ def parse_diagram_analysis_response(response_text: str) -> DiagramAnalysisResult
         Structured DiagramAnalysisResult
     """
     import json
-    import re
 
     # Try to extract JSON from the response
     json_match = re.search(r"\{[\s\S]*\}", response_text)

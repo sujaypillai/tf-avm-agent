@@ -1,6 +1,7 @@
 """Tests for the CLI chat command."""
 
 import os
+import re
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -10,6 +11,11 @@ from tf_avm_agent.cli import app
 
 
 runner = CliRunner()
+
+
+def _strip_ansi(text: str) -> str:
+    """Remove ANSI escape codes from text."""
+    return re.sub(r"\x1b\[[0-9;]*m", "", text)
 
 
 class TestChatCommand:
@@ -25,7 +31,7 @@ class TestChatCommand:
         """Test that help shows Azure OpenAI option."""
         result = runner.invoke(app, ["chat", "--help"])
         assert result.exit_code == 0
-        assert "--azure-openai" in result.output
+        assert "--azure-openai" in _strip_ansi(result.output)
 
     def test_chat_quit_command(self):
         """Test that quit command exits the chat."""

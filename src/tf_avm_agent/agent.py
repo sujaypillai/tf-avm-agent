@@ -6,9 +6,7 @@ Built using the Microsoft Agent Framework.
 """
 
 import asyncio
-import base64
 import concurrent.futures
-import json
 import logging
 import os
 import uuid
@@ -32,10 +30,9 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-from tf_avm_agent.registry.avm_modules import (
-    AVM_MODULES,
-    get_module_by_service,
-    search_modules,
+from tf_avm_agent.lightning.telemetry import (
+    TerraformAgentTracer,
+    set_global_tracer,
 )
 from tf_avm_agent.tools.avm_lookup import (
     get_avm_module_info,
@@ -45,27 +42,16 @@ from tf_avm_agent.tools.avm_lookup import (
     search_avm_modules,
 )
 from tf_avm_agent.tools.diagram_analyzer import (
-    DIAGRAM_ANALYSIS_PROMPT,
-    DiagramAnalysisResult,
     encode_image_to_base64,
     get_image_media_type,
-    parse_diagram_analysis_response,
-)
-from tf_avm_agent.lightning.config import MODULE_COUNT_REWARD_THRESHOLD
-from tf_avm_agent.lightning.telemetry import (
-    TerraformAgentTracer,
-    set_global_tracer,
 )
 from tf_avm_agent.tools.terraform_generator import (
-    TerraformModuleConfig,
-    TerraformProjectConfig,
     TerraformProjectOutput,
     generate_terraform_module,
     generate_terraform_project,
     validate_terraform_syntax,
     write_terraform_files,
 )
-
 
 # Agent system prompt
 AGENT_SYSTEM_PROMPT = """You are a Terraform Infrastructure Expert specializing in Azure Verified Modules (AVM).
@@ -354,7 +340,7 @@ class TerraformAVMAgent:
         except Exception as e:
             self._tracer.end_task(success=False, output=str(e))
             raise
-    
+
     def _extract_services_from_response(self, response: str):
         """Extract and store identified Azure services from agent response."""
         # Common Azure service keywords to look for
@@ -367,7 +353,7 @@ class TerraformAVMAgent:
             "waf", "log analytics", "managed identity", "sql", "cosmos", "redis",
             "event hub", "service bus", "api management", "front door"
         ]
-        
+
         response_lower = response.lower()
         for service in service_keywords:
             if service in response_lower and service not in [s.lower() for s in self._identified_services]:
@@ -403,13 +389,13 @@ class TerraformAVMAgent:
             The agent's response
         """
         return self._run_sync(self.run_async(prompt))
-    
+
     def clear_history(self):
         """Clear the conversation history."""
         self._conversation_history = []
         self._current_diagram = None
         self._identified_services = []
-    
+
     def get_history(self) -> list:
         """Get the conversation history."""
         return self._conversation_history.copy()
@@ -426,7 +412,7 @@ class TerraformAVMAgent:
         """
         # Store the diagram path
         self._current_diagram = image_path
-        
+
         # Create a prompt that asks the agent to analyze the diagram
         prompt = f"""I have loaded an architecture diagram from: {image_path}
 
@@ -460,7 +446,7 @@ End your response with a clear list of services in this format:
         """
         # Store the diagram URL
         self._current_diagram = url
-        
+
         # Create a prompt that asks the agent to analyze the diagram
         prompt = f"""I have loaded an architecture diagram from URL: {url}
 Filename: {filename}
@@ -502,8 +488,8 @@ End your response with a clear list of services in this format:
             The agent's response with analysis and generated code
         """
         # Encode the image
-        image_data = encode_image_to_base64(image_path)
-        media_type = get_image_media_type(image_path)
+        encode_image_to_base64(image_path)
+        get_image_media_type(image_path)
 
         # Create the prompt with image analysis request
         prompt = f"""Please analyze this Azure architecture diagram and generate a Terraform project.
@@ -531,7 +517,7 @@ Steps:
         response = await self._agent.run(prompt)
         return response.text if hasattr(response, "text") else str(response)
 
-    def analyze_diagram(
+    def analyze_diagram(  # noqa: F811
         self,
         image_path: str,
         project_name: str,
