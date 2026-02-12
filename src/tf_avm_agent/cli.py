@@ -26,7 +26,6 @@ from rich.prompt import Confirm, Prompt
 from rich.syntax import Syntax
 from rich.table import Table
 
-from tf_avm_agent.agent import TerraformAVMAgent, generate_terraform
 from tf_avm_agent.registry.avm_modules import AVM_MODULES, get_all_categories
 from tf_avm_agent.registry.version_fetcher import (
     clear_version_cache,
@@ -37,14 +36,6 @@ from tf_avm_agent.tools.avm_lookup import (
     list_available_avm_modules,
     search_avm_modules,
 )
-from tf_avm_agent.tools.diagram_analyzer import (
-    encode_image_to_base64,
-    encode_image_from_url,
-    get_image_media_type,
-    get_filename_from_url,
-    is_url,
-)
-from tf_avm_agent.tools.terraform_generator import write_terraform_files
 
 app = typer.Typer(
     name="tf-avm-agent",
@@ -52,6 +43,40 @@ app = typer.Typer(
     add_completion=False,
 )
 console = Console()
+
+
+def _require_agent_extra():
+    """Import and return agent components, or exit with a helpful message."""
+    try:
+        from tf_avm_agent.agent import TerraformAVMAgent, generate_terraform
+
+        return TerraformAVMAgent, generate_terraform
+    except ImportError:
+        console.print(
+            "[bold red]Error:[/bold red] The agent extra is required for this command.\n"
+            "Install it with: [cyan]pip install tf-avm-agent\\[agent][/cyan]"
+        )
+        raise typer.Exit(1)
+
+
+def _require_diagram_tools():
+    """Import and return diagram analysis tools, or exit with a helpful message."""
+    try:
+        from tf_avm_agent.tools.diagram_analyzer import (
+            encode_image_from_url,
+            encode_image_to_base64,
+            get_filename_from_url,
+            get_image_media_type,
+            is_url,
+        )
+
+        return encode_image_to_base64, encode_image_from_url, get_image_media_type, get_filename_from_url, is_url
+    except ImportError:
+        console.print(
+            "[bold red]Error:[/bold red] The agent extra is required for diagram analysis.\n"
+            "Install it with: [cyan]pip install tf-avm-agent\\[agent][/cyan]"
+        )
+        raise typer.Exit(1)
 
 
 @app.command("generate")
@@ -117,6 +142,7 @@ def generate_command(
 
         if interactive:
             # Use the AI agent for interactive generation
+            TerraformAVMAgent, _generate_terraform = _require_agent_extra()
             agent = TerraformAVMAgent()
             prompt = f"""Generate a Terraform project with the following specifications:
 
@@ -137,6 +163,9 @@ Please:
             console.print(Markdown(response))
         else:
             # Direct generation without AI
+            _TerraformAVMAgent, generate_terraform = _require_agent_extra()
+            from tf_avm_agent.tools.terraform_generator import write_terraform_files
+
             with console.status("[bold green]Generating Terraform project..."):
                 result = generate_terraform(
                     services=service_list,
@@ -171,6 +200,7 @@ Please:
         console.print(f"\n[cyan]Diagram:[/cyan] {diagram}")
         console.print(f"[cyan]Location:[/cyan] {location}")
 
+        TerraformAVMAgent, _ = _require_agent_extra()
         agent = TerraformAVMAgent()
         with console.status("[bold green]Analyzing diagram with AI agent..."):
             response = agent.analyze_diagram(
@@ -200,14 +230,17 @@ def chat_command(
     - Generate Terraform code
     - Answer questions about Azure infrastructure
     """
+    TerraformAVMAgent, _ = _require_agent_extra()
+    encode_image_to_base64, encode_image_from_url, get_image_media_type, get_filename_from_url, is_url = _require_diagram_tools()
+
     # Auto-detect Azure OpenAI if environment variables are set
     use_azure = azure_openai or bool(os.environ.get("AZURE_OPENAI_ENDPOINT"))
-    
+
     if use_azure:
         console.print("[dim]Using Azure OpenAI[/dim]")
     else:
         console.print("[dim]Using OpenAI[/dim]")
-    
+
     console.print(Panel(
         "[bold blue]Terraform AVM Agent - Interactive Mode[/bold blue]\n"
         "Type your questions or requests. Type 'quit' or 'exit' to end the session.\n"
@@ -252,16 +285,16 @@ def chat_command(
             # Handle load diagram command (supports both local files and URLs)
             if user_input.lower().startswith("load "):
                 source = user_input.replace("load ", "").strip().strip('"').strip("'")
-                
+
                 try:
                     if is_url(source):
                         # Handle URL
                         console.print(f"[dim]Downloading diagram from URL: {source}[/dim]")
-                        
+
                         with console.status("[bold green]Downloading..."):
                             image_data, media_type = encode_image_from_url(source)
                             filename = get_filename_from_url(source)
-                        
+
                         # Store in agent context
                         agent._current_diagram = {
                             "path": source,
@@ -269,28 +302,28 @@ def chat_command(
                             "media_type": media_type,
                             "is_url": True
                         }
-                        
+
                         # Send to agent for analysis
                         with console.status("[bold green]Analyzing diagram..."):
                             response = agent.analyze_diagram_from_url(source, filename)
-                        
+
                         console.print(f"\n[bold green]Agent[/bold green]:")
                         console.print(Markdown(response))
                         continue
                     else:
                         # Handle local file
                         file_path = os.path.expanduser(source)
-                        
+
                         if not os.path.exists(file_path):
                             console.print(f"[red]Error: File not found: {file_path}[/red]")
                             continue
-                        
+
                         console.print(f"[dim]Loading diagram: {file_path}[/dim]")
-                        
+
                         # Read and encode the image
                         image_data = encode_image_to_base64(file_path)
                         media_type = get_image_media_type(file_path)
-                        
+
                         # Store in agent context for later use
                         agent._current_diagram = {
                             "path": file_path,
@@ -298,11 +331,11 @@ def chat_command(
                             "media_type": media_type,
                             "is_url": False
                         }
-                        
+
                         # Send to agent for analysis
                         with console.status("[bold green]Analyzing diagram..."):
                             response = agent.analyze_diagram(file_path)
-                        
+
                         console.print(f"\n[bold green]Agent[/bold green]:")
                         console.print(Markdown(response))
                         continue
@@ -714,6 +747,19 @@ def evaluate_command(
     if test_file:
         console.print(f"[dim]Using test file: {test_file}[/dim]")
     console.print("[yellow]Evaluation not yet implemented.[/yellow]")
+
+
+def run_api():
+    """Entry point for the tf-avm-api command with graceful error handling."""
+    try:
+        from tf_avm_agent.api import main as api_main
+    except ImportError:
+        console.print(
+            "[bold red]Error:[/bold red] The api extra is required to run the API server.\n"
+            "Install it with: [cyan]pip install tf-avm-agent\\[api][/cyan]"
+        )
+        raise SystemExit(1)
+    api_main()
 
 
 def main():
