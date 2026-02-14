@@ -232,3 +232,106 @@ class TestGenerateTerraformProject:
         assert "virtual-machine" in main_tf.content
         assert "storage" in main_tf.content.lower()
         assert "key-vault" in main_tf.content or "keyvault" in main_tf.content.lower()
+
+
+class TestTerraformCodeValidation:
+    """Tests for Terraform code generation validation (bug fixes)."""
+
+    def test_tags_variable_does_not_reference_other_variables(self):
+        """Test that tags variable default does not reference var.environment (Issue #1)."""
+        result = generate_terraform_project(
+            project_name="test-project",
+            services=["storage_account"],
+            location="eastus",
+        )
+
+        variables_tf = next(f for f in result.files if f.filename == "variables.tf")
+        # The tags variable should not contain "var.environment" in its default block
+        # We need to check that the default block doesn't have any var. references
+        tags_section = variables_tf.content.split('variable "tags"')[1].split("}")[0]
+        assert "var." not in tags_section, "Tags variable default should not reference other variables"
+
+    def test_tags_merged_with_environment_in_locals(self):
+        """Test that environment is merged into tags via locals block."""
+        result = generate_terraform_project(
+            project_name="test-project",
+            services=["storage_account"],
+            location="eastus",
+        )
+
+        main_tf = next(f for f in result.files if f.filename == "main.tf")
+        # Check that locals block merges tags with environment
+        assert "locals {" in main_tf.content
+        # Check for the merge function with environment
+        assert "merge(var.tags" in main_tf.content
+        assert "environment = var.environment" in main_tf.content
+
+    def test_module_versions_not_zero_zero(self):
+        """Test that module versions are not ~> 0.0 (Issue #2)."""
+        result = generate_terraform_project(
+            project_name="test-project",
+            services=["virtual_machine", "storage_account", "key_vault"],
+            location="eastus",
+        )
+
+        main_tf = next(f for f in result.files if f.filename == "main.tf")
+        # Should not contain "~> 0.0"
+        assert '~> 0.0"' not in main_tf.content, "Module versions should not be ~> 0.0"
+        # Should contain proper version constraints like ~> 0.20, ~> 0.5, etc.
+        assert 'version = "~>' in main_tf.content
+
+    def test_vm_module_has_os_type_default(self):
+        """Test that VM module has virtualmachine_os_type set (Issue #3)."""
+        result = generate_terraform_project(
+            project_name="test-project",
+            services=["virtual_machine"],
+            location="eastus",
+        )
+
+        main_tf = next(f for f in result.files if f.filename == "main.tf")
+        # VM module should have virtualmachine_os_type set to a value, not commented
+        assert "virtualmachine_os_type" in main_tf.content
+        assert '# virtualmachine_os_type' not in main_tf.content, "virtualmachine_os_type should not be commented"
+
+    def test_depends_on_uses_correct_module_names(self):
+        """Test that depends_on uses hyphens not underscores (Issue #4)."""
+        result = generate_terraform_project(
+            project_name="test-project",
+            services=["virtual_machine"],  # Depends on virtual_network
+            location="eastus",
+        )
+
+        main_tf = next(f for f in result.files if f.filename == "main.tf")
+        # Check for the VM module's depends_on
+        if "depends_on" in main_tf.content:
+            # Should use module.virtual-network not module.virtual_network
+            assert "module.virtual-network" in main_tf.content or "depends_on" not in main_tf.content
+            assert "module.virtual_network]" not in main_tf.content, "depends_on should use hyphens not underscores"
+
+    def test_storage_account_name_includes_suffix(self):
+        """Test that storage account name includes random suffix (Issue #5)."""
+        result = generate_terraform_project(
+            project_name="test-project",
+            services=["storage_account"],
+            location="eastus",
+        )
+
+        main_tf = next(f for f in result.files if f.filename == "main.tf")
+        # Storage account name should reference local.name_suffix
+        assert "local.name_suffix" in main_tf.content
+        # Check that storage module name includes the suffix
+        assert "sa${local.name_suffix}" in main_tf.content, "Storage account name should include random suffix"
+
+    def test_key_vault_name_includes_suffix(self):
+        """Test that key vault name includes random suffix (Issue #5)."""
+        result = generate_terraform_project(
+            project_name="test-project",
+            services=["key_vault"],
+            location="eastus",
+        )
+
+        main_tf = next(f for f in result.files if f.filename == "main.tf")
+        # Key vault name should reference local.name_suffix
+        assert "local.name_suffix" in main_tf.content
+        # Check that key vault module name includes the suffix
+        assert "kv-${local.name_suffix}" in main_tf.content, "Key vault name should include random suffix"

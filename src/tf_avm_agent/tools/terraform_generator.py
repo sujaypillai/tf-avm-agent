@@ -166,7 +166,7 @@ def generate_terraform_module(
     lines = [
         f'module "{module_instance_name}" {{',
         f'  source  = "{module.source}"',
-        f'  version = "~> {module.version.split(".")[0]}.0"  # Pessimistic constraint for flexibility',
+        f'  version = "~> {".".join(module.version.split(".")[:2])}"  # Pessimistic constraint',
         "",
         "  # AVM Best Practice: Enable telemetry for module usage tracking",
         "  enable_telemetry = var.enable_telemetry",
@@ -183,7 +183,19 @@ def generate_terraform_module(
         elif var.name == "location" and use_resource_group_ref:
             lines.append("  location = azurerm_resource_group.main.location")
         elif var.name == "name":
-            lines.append(f'  name = "{module_instance_name}"')
+            # For globally unique Azure resources, append suffix
+            # Storage account names must be globally unique and lowercase alphanumeric only
+            if module.name == "storage_account":
+                # Storage account names: 3-24 chars, lowercase letters and numbers only
+                lines.append(f'  name = "${{lower(replace(var.project_name, "-", ""))}}sa${{local.name_suffix}}"')
+            elif module.name == "key_vault":
+                # Key vault names: 3-24 chars, alphanumeric and hyphens
+                lines.append(f'  name = "${{var.project_name}}-kv-${{local.name_suffix}}"')
+            elif module.name == "container_registry":
+                # Container registry names: 5-50 chars, alphanumeric only
+                lines.append(f'  name = "${{lower(replace(var.project_name, "-", ""))}}cr${{local.name_suffix}}"')
+            else:
+                lines.append(f'  name = "{module_instance_name}"')
         elif var.required:
             if var.example:
                 value = _format_hcl_value(var.example)
@@ -371,16 +383,11 @@ def generate_variables_tf(
     default_tags = {
         "project": project_config.project_name,
         "managed_by": "terraform",
-        "environment": "${var.environment}",
         **project_config.tags,
     }
 
     for key, value in default_tags.items():
-        if value.startswith("${"):
-            # This is a variable reference, don't quote it
-            lines.append(f'    {key} = {value.replace("${", "").replace("}", "")}')
-        else:
-            lines.append(f'    {key} = "{value}"')
+        lines.append(f'    {key} = "{value}"')
 
     lines.extend([
         "  }",
@@ -430,6 +437,7 @@ def generate_main_tf(
         "locals {",
         '  name_suffix = random_string.suffix.result',
         '  resource_group_name = var.resource_group_name != "" ? var.resource_group_name : "${var.project_name}-rg-${local.name_suffix}"',
+        '  tags = merge(var.tags, { environment = var.environment })',
         "}",
         "",
         "# -----------------------------------------------------------------------------",
@@ -439,7 +447,7 @@ def generate_main_tf(
         'resource "azurerm_resource_group" "main" {',
         "  name     = local.resource_group_name",
         "  location = var.location",
-        "  tags     = var.tags",
+        "  tags     = local.tags",
         "}",
         "",
         "# -----------------------------------------------------------------------------",
@@ -608,13 +616,16 @@ def generate_terraform_project(
         # Create module config
         instance_name = f"{module.name.replace('_', '-')}"
         variables = _get_default_variables(module, project_name_normalized)
+        
+        # Convert dependency names from underscore to hyphen format
+        depends_on_list = [dep.replace('_', '-') for dep in dependencies_map.get(module_name, [])]
 
         module_configs.append(
             TerraformModuleConfig(
                 module_name=instance_name,
                 avm_module=module.name,
                 variables=variables,
-                depends_on=dependencies_map.get(module_name, []),
+                depends_on=depends_on_list,
             )
         )
         processed.add(module_name)
@@ -714,6 +725,9 @@ def _get_default_variables(module: AVMModule, project_name: str) -> dict:
                 "address_prefixes": ["10.0.1.0/24"],
             }
         }
+    elif module.name == "virtual_machine":
+        variables["virtualmachine_os_type"] = "Linux"
+        variables["virtualmachine_sku_size"] = "Standard_D2s_v3"
     elif module.name == "storage_account":
         variables["account_tier"] = "Standard"
         variables["account_replication_type"] = "LRS"
