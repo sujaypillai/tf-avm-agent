@@ -188,14 +188,14 @@ def generate_terraform_module(
             if module.name == "storage_account":
                 # Storage account names: 3-24 chars, lowercase letters and numbers only
                 # Reserve 8 chars for "sa" + 6-char suffix = leaves 16 chars for project name
-                lines.append(f'  name = substr("${{lower(replace(var.project_name, "-", ""))}}sa${{local.name_suffix}}", 0, 24)')
+                lines.append('  name = substr("${lower(replace(var.project_name, "-", ""))}sa${local.name_suffix}", 0, 24)')
             elif module.name == "key_vault":
                 # Key vault names: 3-24 chars, alphanumeric and hyphens
                 # Reserve 9 chars for "-kv-" + 6-char suffix = leaves 15 chars for project name
-                lines.append(f'  name = substr("${{var.project_name}}-kv-${{local.name_suffix}}", 0, 24)')
+                lines.append('  name = substr("${var.project_name}-kv-${local.name_suffix}", 0, 24)')
             elif module.name == "container_registry":
                 # Container registry names: 5-50 chars, alphanumeric only
-                lines.append(f'  name = substr("${{lower(replace(var.project_name, "-", ""))}}cr${{local.name_suffix}}", 0, 50)')
+                lines.append('  name = substr("${lower(replace(var.project_name, "-", ""))}cr${local.name_suffix}", 0, 50)')
             else:
                 lines.append(f'  name = "{module_instance_name}"')
         elif var.required:
@@ -618,7 +618,7 @@ def generate_terraform_project(
         # Create module config
         instance_name = f"{module.name.replace('_', '-')}"
         variables = _get_default_variables(module, project_name_normalized)
-        
+
         # Convert dependency names from underscore to hyphen format
         depends_on_list = [dep.replace('_', '-') for dep in dependencies_map.get(module_name, [])]
 
