@@ -162,11 +162,14 @@ def generate_terraform_module(
     if not module:
         return f"# Error: Module '{service_name}' not found"
 
+    # Fetch the latest version from the Terraform Registry
+    latest_version = module.get_latest_version()
+
     variables = variables or {}
     lines = [
         f'module "{module_instance_name}" {{',
         f'  source  = "{module.source}"',
-        f'  version = "~> {".".join(module.version.split(".")[:2])}"  # Pessimistic constraint',
+        f'  version = "~> {".".join(latest_version.split(".")[:2])}"  # Pessimistic constraint',
         "",
         "  # AVM Best Practice: Enable telemetry for module usage tracking",
         "  enable_telemetry = var.enable_telemetry",
