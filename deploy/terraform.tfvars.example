@@ -1,0 +1,32 @@
+# Copy this file to terraform.tfvars and fill in your values.
+
+subscription_id = "00000000-0000-0000-0000-000000000000"
+
+app_name    = "tfavmagent"
+environment = "dev"
+location    = "eastus"
+
+# Container image settings
+# image_name is just the repo path inside ACR, no registry prefix
+image_name = "tf-avm-agent-web"
+image_tag  = "latest"
+
+# URL of the backend API – used by nginx to proxy /api/ calls.
+# In a real deployment this should point to the backend Container App's
+# internal FQDN or a custom DNS name, e.g.:
+#   backend_url = "ca-tfavmagent-dev-api.internal.azurecontainerapps.io:80"
+backend_url = "localhost:8000"
+
+# Compute sizing
+container_cpu    = 0.5
+container_memory = "1Gi"
+
+# Scaling
+min_replicas = 1
+max_replicas = 3
+
+# Optional additional tags
+tags = {
+  owner   = "platform-team"
+  project = "tf-avm-agent"
+}
