@@ -27,17 +27,67 @@ env:
   IMAGE_NAME: tf-avm-agent-web
 
 jobs:
-  # ── Build & push Docker image ──────────────────────────────────────────────
-  build:
-    name: Build and push image
+  # ── Provision infrastructure (ACR, Container Apps Environment, etc.) ────────
+  infra:
+    name: Provision infrastructure
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment || 'dev' }}
     permissions:
       contents: read
       id-token: write
     outputs:
+      acr_login_server: ${{ steps.tf-output.outputs.acr_login_server }}
+
+    defaults:
+      run:
+        working-directory: deploy
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.9"
+          terraform_wrapper: false
+
+      - name: Terraform init
+        run: terraform init
+
+      - name: Terraform apply infrastructure
+        run: |
+          terraform apply -auto-approve \
+            -var="subscription_id=${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
+            -var="environment=${{ inputs.environment || 'dev' }}" \
+            -var="backend_url=${{ vars.BACKEND_URL }}" \
+            -target=module.resource-group \
+            -target=module.container-registry \
+            -target=module.log-analytics-workspace \
+            -target=module.container-apps-environment
+
+      - name: Get ACR login server
+        id: tf-output
+        run: |
+          echo "acr_login_server=$(terraform output -raw container_registry_login_server)" >> "$GITHUB_OUTPUT"
+
+  # ── Build & push Docker image ──────────────────────────────────────────────
+  build:
+    name: Build and push image
+    runs-on: ubuntu-latest
+    needs: infra
+    environment: ${{ inputs.environment || 'dev' }}
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
       image_tag: ${{ steps.meta.outputs.image_tag }}
-      registry: ${{ steps.login-acr.outputs.registry }}
 
     steps:
       - uses: actions/checkout@v4
@@ -56,11 +106,9 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Log in to Azure Container Registry
-        id: login-acr
         run: |
-          REGISTRY="${{ vars.ACR_LOGIN_SERVER }}"
+          REGISTRY="${{ needs.infra.outputs.acr_login_server }}"
           az acr login --name "${REGISTRY%%.*}"
-          echo "registry=${REGISTRY}" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -72,16 +120,16 @@ jobs:
           file: ./web/Dockerfile
           push: true
           tags: |
-            ${{ steps.login-acr.outputs.registry }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.image_tag }}
-            ${{ steps.login-acr.outputs.registry }}/${{ env.IMAGE_NAME }}:latest
+            ${{ needs.infra.outputs.acr_login_server }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.image_tag }}
+            ${{ needs.infra.outputs.acr_login_server }}/${{ env.IMAGE_NAME }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # ── Terraform apply ────────────────────────────────────────────────────────
+  # ── Terraform full apply (deploys Container App with the pushed image) ─────
   deploy:
     name: Terraform deploy
     runs-on: ubuntu-latest
-    needs: build
+    needs: [infra, build]
     environment: ${{ inputs.environment || 'dev' }}
     permissions:
       contents: read
