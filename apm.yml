@@ -1,0 +1,6 @@
+name: tf-avm-agent
+version: 1.0.0
+description: AI-powered Terraform code generation using Azure Verified Modules (AVM)
+dependencies:
+  apm:
+    - microsoft/GitHub-Copilot-for-Azure/plugin/skills/azure-compliance
