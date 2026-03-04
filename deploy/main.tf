@@ -13,13 +13,9 @@ terraform {
   }
 
   # Uncomment and configure to store state in Azure Blob Storage
-  # backend "azurerm" {
-  #   resource_group_name  = "rg-tfstate"
-  #   storage_account_name = "stterraformstate"
-  #   container_name       = "tfstate"
-  #   key                  = "tf-avm-agent-web.tfstate"
-  # }
-}
+  backend "azurerm" {
+    # Backend config provided via -backend-config flags or backend config file
+  }
 
 provider "azurerm" {
   features {}

@@ -59,7 +59,13 @@ jobs:
           terraform_wrapper: false
 
       - name: Terraform init
-        run: terraform init
+        run: |
+          terraform init \
+            -backend-config="resource_group_name=${{ vars.BACKEND_RG }}" \
+            -backend-config="storage_account_name=${{ vars.BACKEND_SA }}" \
+            -backend-config="container_name=${{ vars.BACKEND_CONTAINER }}" \
+            -backend-config="key=terraform.tfstate" \
+            -backend-config="use_oidc=true"
 
       - name: Terraform apply infrastructure
         run: |
@@ -155,7 +161,13 @@ jobs:
           terraform_version: "~1.11"
 
       - name: Terraform init
-        run: terraform init
+        run: |
+          terraform init \
+            -backend-config="resource_group_name=${{ vars.BACKEND_RG }}" \
+            -backend-config="storage_account_name=${{ vars.BACKEND_SA }}" \
+            -backend-config="container_name=${{ vars.BACKEND_CONTAINER }}" \
+            -backend-config="key=terraform.tfstate" \
+            -backend-config="use_oidc=true"
 
       - name: Terraform plan
         run: |
