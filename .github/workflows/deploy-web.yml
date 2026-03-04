@@ -59,20 +59,13 @@ jobs:
           terraform_wrapper: false
 
       - name: Terraform init
-        env:
-          ARM_USE_OIDC: "true"
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
         run: |
           terraform init \
             -backend-config="resource_group_name=${{ vars.BACKEND_RG }}" \
             -backend-config="storage_account_name=${{ vars.BACKEND_SA }}" \
             -backend-config="container_name=${{ vars.BACKEND_CONTAINER }}" \
             -backend-config="key=terraform.tfstate" \
-            -backend-config="use_oidc=true" \
-            -backend-config="client_id=${{ secrets.AZURE_CLIENT_ID }}" \
-            -backend-config="tenant_id=${{ secrets.AZURE_TENANT_ID }}" \
+            -backend-config="use_cli=true" \
             -backend-config="subscription_id=${{ secrets.AZURE_SUBSCRIPTION_ID }}"
 
       - name: Terraform apply infrastructure
@@ -169,20 +162,13 @@ jobs:
           terraform_version: "~1.11"
 
       - name: Terraform init
-        env:
-          ARM_USE_OIDC: "true"
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
         run: |
           terraform init \
             -backend-config="resource_group_name=${{ vars.BACKEND_RG }}" \
             -backend-config="storage_account_name=${{ vars.BACKEND_SA }}" \
             -backend-config="container_name=${{ vars.BACKEND_CONTAINER }}" \
             -backend-config="key=terraform.tfstate" \
-            -backend-config="use_oidc=true" \
-            -backend-config="client_id=${{ secrets.AZURE_CLIENT_ID }}" \
-            -backend-config="tenant_id=${{ secrets.AZURE_TENANT_ID }}" \
+            -backend-config="use_cli=true" \
             -backend-config="subscription_id=${{ secrets.AZURE_SUBSCRIPTION_ID }}"
 
       - name: Terraform plan
