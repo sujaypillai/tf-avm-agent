@@ -70,7 +70,10 @@ jobs:
             -backend-config="storage_account_name=${{ vars.BACKEND_SA }}" \
             -backend-config="container_name=${{ vars.BACKEND_CONTAINER }}" \
             -backend-config="key=terraform.tfstate" \
-            -backend-config="use_oidc=true"
+            -backend-config="use_oidc=true" \
+            -backend-config="client_id=${{ secrets.AZURE_CLIENT_ID }}" \
+            -backend-config="tenant_id=${{ secrets.AZURE_TENANT_ID }}" \
+            -backend-config="subscription_id=${{ secrets.AZURE_SUBSCRIPTION_ID }}"
 
       - name: Terraform apply infrastructure
         run: |
@@ -177,7 +180,10 @@ jobs:
             -backend-config="storage_account_name=${{ vars.BACKEND_SA }}" \
             -backend-config="container_name=${{ vars.BACKEND_CONTAINER }}" \
             -backend-config="key=terraform.tfstate" \
-            -backend-config="use_oidc=true"
+            -backend-config="use_oidc=true" \
+            -backend-config="client_id=${{ secrets.AZURE_CLIENT_ID }}" \
+            -backend-config="tenant_id=${{ secrets.AZURE_TENANT_ID }}" \
+            -backend-config="subscription_id=${{ secrets.AZURE_SUBSCRIPTION_ID }}"
 
       - name: Terraform plan
         run: |
