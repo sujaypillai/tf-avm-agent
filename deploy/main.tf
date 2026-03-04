@@ -16,6 +16,7 @@ terraform {
   backend "azurerm" {
     # Backend config provided via -backend-config flags or backend config file
   }
+}
 
 provider "azurerm" {
   features {}
