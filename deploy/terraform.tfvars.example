@@ -4,7 +4,7 @@ subscription_id = "00000000-0000-0000-0000-000000000000"
 
 app_name    = "tfavmagent"
 environment = "dev"
-location    = "eastus"
+location    = "swedencentral"
 
 # Container image settings
 # image_name is just the repo path inside ACR, no registry prefix

@@ -55,7 +55,7 @@ module "resource-group" {
 
 module "log-analytics-workspace" {
   source  = "Azure/avm-res-operationalinsights-workspace/azurerm"
-  version = "~> 0.4"
+  version = "~> 0.5"
 
   name                = "log-${local.resource_prefix}"
   resource_group_name = module.resource-group.name
@@ -69,7 +69,7 @@ module "log-analytics-workspace" {
 
 module "container-registry" {
   source  = "Azure/avm-res-containerregistry-registry/azurerm"
-  version = "~> 0.4"
+  version = "~> 0.5"
 
   name                = "cr${replace(local.resource_prefix, "-", "")}web"
   resource_group_name = module.resource-group.name
@@ -85,13 +85,12 @@ module "container-registry" {
 
 module "container-apps-environment" {
   source  = "Azure/avm-res-app-managedenvironment/azurerm"
-  version = "~> 0.1"
+  version = "~> 0.4"
 
-  name                       = "cae-${local.resource_prefix}"
-  resource_group_name        = module.resource-group.name
-  location                   = var.location
-  log_analytics_workspace_id = module.log-analytics-workspace.resource_id
-  tags                       = local.tags
+  name                = "cae-${local.resource_prefix}"
+  resource_group_name = module.resource-group.name
+  location            = var.location
+  tags                = local.tags
 
   depends_on = [module.resource-group, module.log-analytics-workspace]
 }
@@ -100,13 +99,13 @@ module "container-apps-environment" {
 
 module "container-app-web" {
   source  = "Azure/avm-res-app-containerapp/azurerm"
-  version = "~> 0.4"
+  version = "0.7.4"
 
-  name                         = "ca-${local.resource_prefix}-web"
-  resource_group_name          = module.resource-group.name
-  container_app_environment_id = module.container-apps-environment.resource_id
-  revision_mode                = "Single"
-  tags                         = local.tags
+  name                                  = "ca-${local.resource_prefix}-web"
+  resource_group_name                   = module.resource-group.name
+  container_app_environment_resource_id = module.container-apps-environment.resource_id
+  revision_mode                         = "Single"
+  tags                                  = local.tags
 
   template = {
     containers = [
@@ -144,8 +143,8 @@ module "container-app-web" {
 
   registries = [
     {
-      server               = module.container-registry.login_server
-      identity             = "system"
+      server   = module.container-registry.login_server
+      identity = "system"
     }
   ]
 
