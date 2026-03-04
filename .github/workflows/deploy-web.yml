@@ -55,7 +55,7 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: "~1.10"
+          terraform_version: "~1.11"
           terraform_wrapper: false
 
       - name: Terraform init
@@ -152,7 +152,7 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: "~1.10"
+          terraform_version: "~1.11"
 
       - name: Terraform init
         run: terraform init
