@@ -42,7 +42,7 @@ tf-avm-agent is an AI-powered code generator that produces production-ready Terr
      ▼                               ▼
 ┌──────────────────────┐  ┌─────────────────────┐
 │ AVM Module Registry  │  │ Terraform Utils     │
-│ 105+ modules         │  │ CLI integration     │
+│ Comprehensive set of │  │ CLI integration     │
 │ Version fetching     │  │ Validation          │
 │ Module discovery     │  │ Formatting          │
 └──────────────────────┘  └─────────────────────┘
@@ -52,7 +52,7 @@ tf-avm-agent is an AI-powered code generator that produces production-ready Terr
 
 ### Registry Pattern
 
-The AVM module registry (`registry/avm_modules.py`) maintains definitions for 105+ Azure Verified Modules organized by category. Each module includes:
+The AVM module registry (`registry/avm_modules.py`) maintains definitions for a comprehensive set of Azure Verified Modules organized by category. Each module includes:
 - Terraform Registry source path
 - Service name aliases for fuzzy matching
 - Default variables, outputs, and dependencies

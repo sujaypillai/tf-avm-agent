@@ -22,7 +22,8 @@ applyTo: "**/*.tf"
 ## Resource Naming
 
 - Use kebab-case for module instance names (e.g., `module "avm-res-network-virtualnetwork"`)
-- Storage accounts and Key Vaults must have globally unique names with a 24-character maximum length — use `substr()` for truncation
+- Storage accounts must have globally unique names with a 24-character maximum length — use `substr()` for truncation
+- Key Vault names must also be globally unique with a 24-character maximum length — apply the same `substr()` pattern
 - Apply a consistent naming pattern: `"${var.project_name}-<resource-type>"`
 
 ## Variables and Locals
