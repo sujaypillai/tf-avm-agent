@@ -67,6 +67,7 @@ jobs:
       - name: Terraform init
         run: |
           terraform init \
+            -backend-config="use_azuread_auth=true" \
             -backend-config="resource_group_name=${{ vars.BACKEND_RG }}" \
             -backend-config="storage_account_name=${{ vars.BACKEND_SA }}" \
             -backend-config="container_name=${{ vars.BACKEND_CONTAINER }}" \
@@ -175,6 +176,7 @@ jobs:
       - name: Terraform init
         run: |
           terraform init \
+            -backend-config="use_azuread_auth=true" \
             -backend-config="resource_group_name=${{ vars.BACKEND_RG }}" \
             -backend-config="storage_account_name=${{ vars.BACKEND_SA }}" \
             -backend-config="container_name=${{ vars.BACKEND_CONTAINER }}" \
