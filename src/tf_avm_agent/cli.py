@@ -11,6 +11,7 @@ Usage:
     tf-avm-agent refresh-versions
 """
 
+import json
 import os
 from pathlib import Path
 from typing import Optional
@@ -41,6 +42,27 @@ app = typer.Typer(
     add_completion=False,
 )
 console = Console()
+
+
+def _print_json(data: dict) -> None:
+    """Print JSON output to stdout."""
+    print(json.dumps(data, indent=2))
+
+
+def _json_error(message: str, code: str = "ERROR", exit_code: int = 1) -> None:
+    """Print JSON error and exit."""
+    _print_json({
+        "status": "error",
+        "message": message,
+        "code": code
+    })
+    raise typer.Exit(exit_code)
+
+
+def _json_success(data: dict) -> None:
+    """Print JSON success response."""
+    data["status"] = "success"
+    _print_json(data)
 
 
 def _require_agent_extra():
@@ -115,6 +137,11 @@ def generate_command(
         "--overwrite",
         help="Overwrite existing files in output directory",
     ),
+    output_format: str = typer.Option(
+        "text",
+        "--output-format", "-f",
+        help="Output format: text or json",
+    ),
 ):
     """
     Generate Terraform code from a list of services or an architecture diagram.
@@ -124,21 +151,32 @@ def generate_command(
         tf-avm-agent generate -d architecture.png -n "my-project" -i
     """
     if not services and not diagram:
+        if output_format == "json":
+            _json_error("Either --services or --diagram must be provided", "MISSING_INPUT")
         console.print("[red]Error: Either --services or --diagram must be provided[/red]")
         raise typer.Exit(1)
 
     if services and diagram:
-        console.print("[yellow]Warning: Both services and diagram provided. Using services.[/yellow]")
+        if output_format == "json":
+            # In JSON mode, silently use services (no warnings)
+            pass
+        else:
+            console.print("[yellow]Warning: Both services and diagram provided. Using services.[/yellow]")
 
-    console.print(Panel(f"[bold blue]Terraform AVM Agent[/bold blue]\nGenerating project: {name}"))
+    if output_format != "json":
+        console.print(Panel(f"[bold blue]Terraform AVM Agent[/bold blue]\nGenerating project: {name}"))
 
     if services:
         # Parse services list
         service_list = [s.strip() for s in services.split(",")]
-        console.print(f"\n[cyan]Services:[/cyan] {', '.join(service_list)}")
-        console.print(f"[cyan]Location:[/cyan] {location}")
+
+        if output_format != "json":
+            console.print(f"\n[cyan]Services:[/cyan] {', '.join(service_list)}")
+            console.print(f"[cyan]Location:[/cyan] {location}")
 
         if interactive:
+            if output_format == "json":
+                _json_error("Interactive mode is not supported with JSON output", "UNSUPPORTED_MODE")
             # Use the AI agent for interactive generation
             TerraformAVMAgent, _generate_terraform = _require_agent_extra()
             agent = TerraformAVMAgent()
@@ -164,37 +202,78 @@ Please:
             _TerraformAVMAgent, generate_terraform = _require_agent_extra()
             from tf_avm_agent.tools.terraform_generator import write_terraform_files
 
-            with console.status("[bold green]Generating Terraform project..."):
+            if output_format != "json":
+                with console.status("[bold green]Generating Terraform project..."):
+                    result = generate_terraform(
+                        services=service_list,
+                        project_name=name,
+                        location=location,
+                    )
+            else:
                 result = generate_terraform(
                     services=service_list,
                     project_name=name,
                     location=location,
                 )
 
-            console.print("\n[bold green]Generated Files:[/bold green]\n")
+            if output_format == "json":
+                # Build JSON response
+                from tf_avm_agent.registry.avm_modules import get_module_by_service
 
-            for file in result.files:
-                console.print(f"\n[cyan]{file.filename}[/cyan]")
-                if file.filename.endswith((".tf", ".tfvars.example")):
-                    syntax = Syntax(file.content, "hcl", theme="monokai", line_numbers=True)
-                    console.print(syntax)
-                elif file.filename.endswith(".md"):
-                    console.print(Markdown(file.content))
-                else:
-                    console.print(file.content)
+                modules_used = []
+                for service in service_list:
+                    module = get_module_by_service(service)
+                    if module:
+                        modules_used.append({
+                            "service": service,
+                            "module": module.source,
+                            "version": module.version,
+                        })
 
-            if output:
-                output.mkdir(parents=True, exist_ok=True)
-                write_result = write_terraform_files(str(output), result, overwrite)
-                console.print(f"\n[bold green]{write_result}[/bold green]")
+                files_written = []
+                warnings = []
+
+                if output:
+                    output.mkdir(parents=True, exist_ok=True)
+                    write_result = write_terraform_files(str(output), result, overwrite)
+                    # Extract file names from the result
+                    files_written = [str(output / file.filename) for file in result.files]
+
+                _json_success({
+                    "project_name": name,
+                    "output_dir": str(output) if output else None,
+                    "modules_used": modules_used,
+                    "files_written": files_written if files_written else [file.filename for file in result.files],
+                    "warnings": warnings,
+                })
             else:
-                if Confirm.ask("\n[yellow]Would you like to save these files?[/yellow]"):
-                    output_dir = Prompt.ask("Output directory", default=f"./{name}")
-                    Path(output_dir).mkdir(parents=True, exist_ok=True)
-                    write_result = write_terraform_files(output_dir, result, overwrite)
+                console.print("\n[bold green]Generated Files:[/bold green]\n")
+
+                for file in result.files:
+                    console.print(f"\n[cyan]{file.filename}[/cyan]")
+                    if file.filename.endswith((".tf", ".tfvars.example")):
+                        syntax = Syntax(file.content, "hcl", theme="monokai", line_numbers=True)
+                        console.print(syntax)
+                    elif file.filename.endswith(".md"):
+                        console.print(Markdown(file.content))
+                    else:
+                        console.print(file.content)
+
+                if output:
+                    output.mkdir(parents=True, exist_ok=True)
+                    write_result = write_terraform_files(str(output), result, overwrite)
                     console.print(f"\n[bold green]{write_result}[/bold green]")
+                else:
+                    if Confirm.ask("\n[yellow]Would you like to save these files?[/yellow]"):
+                        output_dir = Prompt.ask("Output directory", default=f"./{name}")
+                        Path(output_dir).mkdir(parents=True, exist_ok=True)
+                        write_result = write_terraform_files(output_dir, result, overwrite)
+                        console.print(f"\n[bold green]{write_result}[/bold green]")
 
     elif diagram:
+        if output_format == "json":
+            _json_error("Diagram analysis is not supported with JSON output", "UNSUPPORTED_MODE")
+
         console.print(f"\n[cyan]Diagram:[/cyan] {diagram}")
         console.print(f"[cyan]Location:[/cyan] {location}")
 
@@ -380,9 +459,9 @@ def list_modules_command(
         "--category", "-c",
         help="Filter by category (compute, networking, storage, database, security, messaging, monitoring, ai)",
     ),
-    format: str = typer.Option(
+    output_format: str = typer.Option(
         "table",
-        "--format", "-f",
+        "--output-format", "-f",
         help="Output format: table, markdown, or json",
     ),
     sync: bool = typer.Option(
@@ -404,16 +483,21 @@ def list_modules_command(
     if sync:
         from tf_avm_agent.registry.avm_modules import sync_modules_from_registry
 
-        with console.status("[bold green]Syncing modules from Terraform Registry..."):
+        if output_format != "json":
+            with console.status("[bold green]Syncing modules from Terraform Registry..."):
+                try:
+                    sync_modules_from_registry()
+                    console.print("[green]✓ Synced modules from registry[/green]\n")
+                except Exception as e:
+                    console.print(f"[yellow]Warning: Could not sync from registry: {e}[/yellow]\n")
+        else:
             try:
                 sync_modules_from_registry()
-                console.print("[green]✓ Synced modules from registry[/green]\n")
-            except Exception as e:
-                console.print(f"[yellow]Warning: Could not sync from registry: {e}[/yellow]\n")
+            except Exception:
+                # Silent in JSON mode
+                pass
 
-    if format == "json":
-        import json
-
+    if output_format == "json":
         modules = AVM_MODULES
         if category:
             modules = {k: v for k, v in modules.items() if v.category == category}
@@ -427,9 +511,9 @@ def list_modules_command(
                 "description": module.description,
                 "aliases": module.aliases,
             }
-        console.print(json.dumps(output, indent=2))
+        _print_json({"modules": output})
 
-    elif format == "markdown":
+    elif output_format == "markdown":
         result = list_available_avm_modules(category)
         console.print(Markdown(result))
 
@@ -469,6 +553,11 @@ def list_modules_command(
 @app.command("search")
 def search_command(
     query: str = typer.Argument(..., help="Search query"),
+    output_format: str = typer.Option(
+        "text",
+        "--output-format", "-f",
+        help="Output format: text or json",
+    ),
 ):
     """
     Search for Azure Verified Modules.
@@ -476,14 +565,37 @@ def search_command(
     Examples:
         tf-avm-agent search database
         tf-avm-agent search "kubernetes"
+        tf-avm-agent search database --output-format json
     """
-    result = search_avm_modules(query)
-    console.print(Markdown(result))
+    if output_format == "json":
+        from tf_avm_agent.registry.avm_modules import search_modules
+
+        results = search_modules(query)
+        modules_list = []
+        for module in results:
+            modules_list.append({
+                "name": module.name,
+                "source": module.source,
+                "version": module.version,
+                "category": module.category,
+                "description": module.description,
+                "aliases": module.aliases,
+                "azure_service": module.azure_service,
+            })
+        _print_json({"query": query, "modules": modules_list})
+    else:
+        result = search_avm_modules(query)
+        console.print(Markdown(result))
 
 
 @app.command("info")
 def info_command(
     module: str = typer.Argument(..., help="Module name or alias"),
+    output_format: str = typer.Option(
+        "text",
+        "--output-format", "-f",
+        help="Output format: text or json",
+    ),
 ):
     """
     Get detailed information about an AVM module.
@@ -491,10 +603,53 @@ def info_command(
     Examples:
         tf-avm-agent info virtual_machine
         tf-avm-agent info aks
-        tf-avm-agent info storage
+        tf-avm-agent info storage --output-format json
     """
-    result = get_avm_module_info(module)
-    console.print(Markdown(result))
+    if output_format == "json":
+        from tf_avm_agent.registry.avm_modules import get_module_by_service
+
+        mod = get_module_by_service(module)
+        if not mod:
+            _json_error(f"Module '{module}' not found", "MODULE_NOT_FOUND")
+
+        # Build JSON response
+        module_info = {
+            "name": mod.name,
+            "source": mod.source,
+            "version": mod.version,
+            "category": mod.category,
+            "description": mod.description,
+            "azure_service": mod.azure_service,
+            "aliases": mod.aliases,
+            "dependencies": mod.dependencies,
+            "required_variables": [
+                {
+                    "name": var.name,
+                    "type": var.type,
+                    "description": var.description,
+                    "required": var.required,
+                    "default": var.default,
+                    "example": var.example,
+                }
+                for var in mod.required_variables
+            ],
+            "optional_variables": [
+                {
+                    "name": var.name,
+                    "type": var.type,
+                    "description": var.description,
+                    "required": var.required,
+                    "default": var.default,
+                    "example": var.example,
+                }
+                for var in mod.optional_variables
+            ],
+            "outputs": mod.outputs,
+        }
+        _print_json(module_info)
+    else:
+        result = get_avm_module_info(module)
+        console.print(Markdown(result))
 
 
 @app.command("categories")
