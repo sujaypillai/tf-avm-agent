@@ -493,7 +493,7 @@ def list_modules_command(
         else:
             try:
                 sync_modules_from_registry()
-            except Exception as e:
+            except Exception:
                 # Silent in JSON mode
                 pass
 
