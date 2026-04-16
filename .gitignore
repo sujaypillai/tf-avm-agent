@@ -54,3 +54,6 @@ Thumbs.db
 
 # tf-avm-agent cache
 .cache/
+
+# APM (Agent Package Manager)
+apm_modules/
