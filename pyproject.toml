@@ -21,6 +21,7 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
 ]
 dependencies = [
     "pydantic>=2.0.0",
@@ -31,9 +32,9 @@ dependencies = [
 
 [project.optional-dependencies]
 agent = [
-    "agent-framework>=1.0.0b260128",
-    "agent-framework-azure-ai>=1.0.0b260128",
-    "agent-framework-durabletask>=1.0.0b260128",
+    "agent-framework==1.0.1",
+    "agent-framework-azure-ai==1.0.1",
+    "agent-framework-durabletask==1.0.1",
     "azure-identity>=1.15.0",
     "pillow>=10.0.0",
     "jinja2>=3.1.0",
