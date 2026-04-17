@@ -17,15 +17,13 @@ from pydantic import BaseModel, Field
 
 # Microsoft Agent Framework imports
 try:
-    from agent_framework import ChatAgent
-    from agent_framework.azure import AzureOpenAIChatClient
+    from agent_framework import Agent
     from agent_framework.openai import OpenAIChatClient
 
     AGENT_FRAMEWORK_AVAILABLE = True
 except ImportError:
     AGENT_FRAMEWORK_AVAILABLE = False
-    ChatAgent = None
-    AzureOpenAIChatClient = None
+    Agent = None
     OpenAIChatClient = None
 
 logger = logging.getLogger(__name__)
@@ -238,7 +236,7 @@ class TerraformAVMAgent:
         )
         return write_terraform_files(output_dir, result, overwrite)
 
-    async def _create_agent(self) -> "ChatAgent":
+    async def _create_agent(self) -> "Agent":
         """Create the agent instance."""
         if not AGENT_FRAMEWORK_AVAILABLE:
             raise ImportError(
@@ -260,15 +258,15 @@ class TerraformAVMAgent:
             from azure.identity import DefaultAzureCredential
 
             # Use DefaultAzureCredential (Entra ID) - API key auth may be disabled on the resource
-            chat_client = AzureOpenAIChatClient(
-                endpoint=self.azure_endpoint,
-                deployment=self.azure_deployment,
+            chat_client = OpenAIChatClient(
+                model=self.azure_deployment,
+                azure_endpoint=self.azure_endpoint,
                 credential=DefaultAzureCredential(),
             )
         else:
             chat_client = OpenAIChatClient(api_key=self.api_key)
 
-        return ChatAgent(
+        return Agent(
             chat_client=chat_client,
             instructions=AGENT_SYSTEM_PROMPT,
             tools=self._get_tools(),
