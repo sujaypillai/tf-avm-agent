@@ -118,8 +118,11 @@ class TestAgentFramework101Upgrade:
         version = getattr(agent_framework, "__version__", None)
         if version:
             major, minor, patch = map(int, version.split(".")[:3])
-            assert major >= 1, f"Major version should be >= 1, got {major}"
-            assert minor >= 0, f"Minor version should be >= 0, got {minor}"
+            assert (major, minor, patch) >= (
+                1,
+                0,
+                1,
+            ), f"agent-framework version should be >= 1.0.1, got {version}"
 
 
 class TestBreakingChangesAddressed:
@@ -127,7 +130,7 @@ class TestBreakingChangesAddressed:
 
     def test_no_azure_openai_chat_client(self):
         """Test that AzureOpenAIChatClient no longer exists (merged into OpenAIChatClient)."""
-        # This should not raise an error - the old import path doesn't exist
+        # This should raise ImportError because the old import path no longer exists
         with pytest.raises(ImportError):
             from agent_framework.azure import AzureOpenAIChatClient  # noqa: F401
 
