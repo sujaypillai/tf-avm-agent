@@ -5,7 +5,7 @@ This agent can accept a list of Azure services or an architecture diagram as inp
 and generate a complete Terraform project using Azure Verified Modules (AVM).
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 # Lazy imports via PEP 562 so that `import tf_avm_agent` works without
 # pulling in agent-framework, pydantic, and other heavy optional deps.
