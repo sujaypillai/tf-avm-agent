@@ -108,14 +108,14 @@ module "container-app-web" {
     containers = [
       {
         name   = "web"
-        image  = "${module.container-registry.login_server}/${var.image_name}:${var.image_tag}"
+        image  = "${module.container-registry.resource.login_server}/${var.image_name}:${var.image_tag}"
         cpu    = var.container_cpu
         memory = var.container_memory
 
         env = [
           {
             name  = "BACKEND_URL"
-            value = "https://${module.container-app-api.fqdn}"
+            value = module.container-app-api.fqdn_url
           }
         ]
       }
@@ -140,13 +140,13 @@ module "container-app-web" {
 
   registries = [
     {
-      server   = module.container-registry.login_server
+      server   = module.container-registry.resource.login_server
       identity = "system"
     }
   ]
 
-  identity = {
-    type = "SystemAssigned"
+  managed_identities = {
+    system_assigned = true
   }
 
   depends_on = [module.container-apps-environment, module.container-registry, module.container-app-api]
@@ -157,7 +157,7 @@ module "container-app-web" {
 resource "azurerm_role_assignment" "acr_pull" {
   scope                = module.container-registry.resource_id
   role_definition_name = "AcrPull"
-  principal_id         = module.container-app-web.system_assigned_mi_principal_id
+  principal_id         = module.container-app-web.identity.principalId
 }
 
 # ── Azure OpenAI (Cognitive Services) ─────────────────────────────────────────
@@ -199,7 +199,7 @@ module "openai" {
 resource "azurerm_role_assignment" "api_openai_user" {
   scope                = module.openai.resource_id
   role_definition_name = "Cognitive Services OpenAI User"
-  principal_id         = module.container-app-api.system_assigned_mi_principal_id
+  principal_id         = module.container-app-api.identity.principalId
 }
 
 # ── Container App – MCP Backend API ──────────────────────────────────────────
@@ -218,7 +218,7 @@ module "container-app-api" {
     containers = [
       {
         name   = "api"
-        image  = "${module.container-registry.login_server}/${var.api_image_name}:${var.image_tag}"
+        image  = "${module.container-registry.resource.login_server}/${var.api_image_name}:${var.image_tag}"
         cpu    = var.api_container_cpu
         memory = var.api_container_memory
 
@@ -254,13 +254,13 @@ module "container-app-api" {
 
   registries = [
     {
-      server   = module.container-registry.login_server
+      server   = module.container-registry.resource.login_server
       identity = "system"
     }
   ]
 
-  identity = {
-    type = "SystemAssigned"
+  managed_identities = {
+    system_assigned = true
   }
 
   depends_on = [module.container-apps-environment, module.container-registry, module.openai]
@@ -271,5 +271,5 @@ module "container-app-api" {
 resource "azurerm_role_assignment" "acr_pull_api" {
   scope                = module.container-registry.resource_id
   role_definition_name = "AcrPull"
-  principal_id         = module.container-app-api.system_assigned_mi_principal_id
+  principal_id         = module.container-app-api.identity.principalId
 }

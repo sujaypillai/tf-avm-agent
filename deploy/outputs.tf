@@ -5,12 +5,12 @@ output "resource_group_name" {
 
 output "container_registry_login_server" {
   description = "Login server URL for the Azure Container Registry."
-  value       = module.container-registry.login_server
+  value       = module.container-registry.resource.login_server
 }
 
 output "container_app_fqdn" {
   description = "Fully-qualified domain name of the web Container App (public HTTPS URL)."
-  value       = "https://${module.container-app-web.fqdn}"
+  value       = module.container-app-web.fqdn_url
 }
 
 output "container_app_name" {
@@ -25,14 +25,14 @@ output "container_apps_environment_id" {
 
 output "web_identity_principal_id" {
   description = "Principal ID of the system-assigned managed identity for the web Container App (used for ACR pull)."
-  value       = module.container-app-web.system_assigned_mi_principal_id
+  value       = module.container-app-web.identity.principalId
 }
 
 # ── API Container App ────────────────────────────────────────────────────────
 
 output "api_container_app_fqdn" {
   description = "Fully-qualified domain name of the API Container App (internal)."
-  value       = module.container-app-api.fqdn
+  value       = module.container-app-api.fqdn_url
 }
 
 output "api_container_app_name" {
@@ -42,7 +42,7 @@ output "api_container_app_name" {
 
 output "api_identity_principal_id" {
   description = "Principal ID of the system-assigned managed identity for the API Container App."
-  value       = module.container-app-api.system_assigned_mi_principal_id
+  value       = module.container-app-api.identity.principalId
 }
 
 # ── Azure OpenAI ─────────────────────────────────────────────────────────────
