@@ -42,6 +42,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
 from tf_avm_agent import TerraformAVMAgent
+from tf_avm_agent.api import app as rest_api_app
 
 log = logging.getLogger("tf-avm-mcp")
 
@@ -188,7 +189,7 @@ class ApiKeyMiddleware(BaseHTTPMiddleware):
 def _cors_origins() -> list[str]:
     raw = os.getenv(
         "MCP_CORS_ORIGINS",
-        "https://vscode.dev,vscode-webview://*,https://claude.ai",
+        "https://vscode.dev,vscode-webview://*,https://claude.ai,*",
     )
     return [o.strip() for o in raw.split(",") if o.strip()]
 
@@ -228,6 +229,9 @@ def create_app() -> FastAPI:
     async def health() -> dict[str, str]:
         """Liveness/readiness probe. Always 200 while the process is up."""
         return {"status": "ok"}
+
+    # Include REST API routes (/api/generate, /api/chat, etc.) for web UI.
+    app.include_router(rest_api_app.router)
 
     # Mount FastMCP at root -> public endpoint is /mcp (not /mcp/mcp).
     app.mount("/", mcp_app)
