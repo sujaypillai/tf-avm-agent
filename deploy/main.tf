@@ -259,9 +259,10 @@ module "container-app-api" {
   }
 
   ingress = {
-    external_enabled = false # Internal only — web frontend + future APIM
-    target_port      = 8000
-    transport        = "http"
+    external_enabled           = false # Internal only — web frontend + future APIM
+    target_port                = 8000
+    transport                  = "http"
+    allow_insecure_connections = true # Allow HTTP from web container's nginx proxy
 
     traffic_weight = [
       {
