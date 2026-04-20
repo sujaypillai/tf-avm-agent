@@ -1,0 +1,47 @@
+# Version control
+.git
+.gitignore
+.github
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.egg-info
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.tox
+.coverage
+htmlcov
+dist
+build
+*.egg
+
+# Virtual envs
+.venv
+venv
+env
+.env
+.env.*
+
+# Editor / OS
+.vscode
+.idea
+*.swp
+.DS_Store
+
+# Tests & examples shouldn't ship in the runtime image
+tests
+examples
+
+# Docs / CI files aren't needed at runtime
+*.md
+!README.md
+.pre-commit-config.yaml
+
+# Terraform state if anyone runs TF locally in this tree
+*.tfstate
+*.tfstate.*
+.terraform

@@ -27,3 +27,44 @@ output "web_identity_principal_id" {
   description = "Principal ID of the system-assigned managed identity for the web Container App (used for ACR pull)."
   value       = module.container-app-web.system_assigned_mi_principal_id
 }
+
+# ── API Container App ────────────────────────────────────────────────────────
+
+output "api_container_app_fqdn" {
+  description = "Fully-qualified domain name of the API Container App (internal)."
+  value       = module.container-app-api.fqdn
+}
+
+output "api_container_app_name" {
+  description = "Name of the API Container App resource."
+  value       = module.container-app-api.name
+}
+
+output "api_identity_principal_id" {
+  description = "Principal ID of the system-assigned managed identity for the API Container App."
+  value       = module.container-app-api.system_assigned_mi_principal_id
+}
+
+# ── Azure OpenAI ─────────────────────────────────────────────────────────────
+
+output "openai_endpoint" {
+  description = "Endpoint URL for the Azure OpenAI service."
+  value       = module.openai.endpoint
+}
+
+output "openai_resource_id" {
+  description = "Resource ID of the Azure OpenAI (Cognitive Services) account."
+  value       = module.openai.resource_id
+}
+
+# ── Key Vault ────────────────────────────────────────────────────────────────
+
+output "key_vault_uri" {
+  description = "URI of the Key Vault."
+  value       = module.key-vault.uri
+}
+
+output "key_vault_resource_id" {
+  description = "Resource ID of the Key Vault."
+  value       = module.key-vault.resource_id
+}

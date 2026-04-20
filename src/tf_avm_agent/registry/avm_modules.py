@@ -1133,12 +1133,14 @@ def get_modules_by_category(category: str) -> list[AVMModule]:
     Returns:
         List of AVM modules in the category
     """
-    return [module for module in AVM_MODULES.values() if module.category == category.lower()]
+    all_modules = get_all_modules()
+    return [module for module in all_modules.values() if module.category == category.lower()]
 
 
 def get_all_categories() -> list[str]:
     """Get all available categories."""
-    return list(set(module.category for module in AVM_MODULES.values()))
+    all_modules = get_all_modules()
+    return list(set(module.category for module in all_modules.values()))
 
 
 def search_modules(query: str) -> list[AVMModule]:
@@ -1153,8 +1155,9 @@ def search_modules(query: str) -> list[AVMModule]:
     """
     query_lower = query.lower()
     results = []
+    all_modules = get_all_modules()
 
-    for module in AVM_MODULES.values():
+    for module in all_modules.values():
         # Check name, description, aliases
         if (
             query_lower in module.name.lower()

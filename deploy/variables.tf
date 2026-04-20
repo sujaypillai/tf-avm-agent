@@ -38,12 +38,6 @@ variable "image_tag" {
   default     = "latest"
 }
 
-variable "backend_url" {
-  description = "URL of the tf-avm-agent backend API (used by nginx to proxy /api/ requests). Example: 'backend-svc:8000'."
-  type        = string
-  default     = "localhost:8000"
-}
-
 variable "container_cpu" {
   description = "CPU allocated to the web container (in vCPU cores)."
   type        = number
@@ -72,4 +66,50 @@ variable "tags" {
   description = "Additional tags to merge with the default tag set."
   type        = map(string)
   default     = {}
+}
+
+# ── API Container App ────────────────────────────────────────────────────────
+
+variable "api_image_name" {
+  description = "Name of the MCP backend API container image (without registry prefix or tag)."
+  type        = string
+  default     = "tf-avm-agent-api"
+}
+
+variable "api_container_cpu" {
+  description = "CPU allocated to the API container (in vCPU cores)."
+  type        = number
+  default     = 0.5
+}
+
+variable "api_container_memory" {
+  description = "Memory allocated to the API container (e.g. '1Gi')."
+  type        = string
+  default     = "1Gi"
+}
+
+# ── Azure OpenAI ─────────────────────────────────────────────────────────────
+
+variable "openai_deployment_name" {
+  description = "Name for the Azure OpenAI model deployment."
+  type        = string
+  default     = "gpt-4o"
+}
+
+variable "openai_model_name" {
+  description = "OpenAI model name to deploy (e.g. gpt-4o, gpt-4o-mini)."
+  type        = string
+  default     = "gpt-4o"
+}
+
+variable "openai_model_version" {
+  description = "Version of the OpenAI model to deploy."
+  type        = string
+  default     = "2024-11-20"
+}
+
+variable "openai_capacity" {
+  description = "Tokens-per-minute capacity in thousands (e.g. 30 = 30K TPM)."
+  type        = number
+  default     = 30
 }

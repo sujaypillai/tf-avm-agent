@@ -11,9 +11,9 @@ from pydantic import Field
 
 from tf_avm_agent.lightning.telemetry import trace_tool
 from tf_avm_agent.registry.avm_modules import (
-    AVM_MODULES,
     AVMModule,
     get_all_categories,
+    get_all_modules,
     get_module_by_service,
     get_modules_by_category,
     search_modules,
@@ -42,7 +42,7 @@ def list_available_avm_modules(
             available = ", ".join(get_all_categories())
             return f"No modules found for category '{category}'. Available categories: {available}"
     else:
-        modules = list(AVM_MODULES.values())
+        modules = list(get_all_modules().values())
 
     # Group by category
     by_category: dict[str, list[AVMModule]] = {}
@@ -83,7 +83,7 @@ def search_avm_modules(
         # Try to find similar modules
         suggestions = []
         query_words = query.lower().split()
-        for module in AVM_MODULES.values():
+        for module in get_all_modules().values():
             for word in query_words:
                 if (
                     word in module.name.lower()
