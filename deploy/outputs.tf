@@ -24,8 +24,13 @@ output "container_apps_environment_id" {
 }
 
 output "web_identity_principal_id" {
-  description = "Principal ID of the system-assigned managed identity for the web Container App (used for ACR pull)."
+  description = "Principal ID of the system-assigned managed identity for the web Container App."
   value       = module.container-app-web.identity[0].principal_id
+}
+
+output "acr_pull_identity_id" {
+  description = "Resource ID of the user-assigned managed identity used for ACR pull."
+  value       = azurerm_user_assigned_identity.acr_pull.id
 }
 
 # ── API Container App ────────────────────────────────────────────────────────

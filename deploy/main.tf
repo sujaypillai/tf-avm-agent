@@ -103,6 +103,21 @@ module "container-apps-environment" {
   depends_on = [module.resource-group, module.log-analytics-workspace]
 }
 
+# ── User-assigned MI for ACR pull (breaks chicken-and-egg with system MI) ─────
+
+resource "azurerm_user_assigned_identity" "acr_pull" {
+  name                = "id-${local.resource_prefix}-acrpull"
+  resource_group_name = module.resource-group.name
+  location            = var.location
+  tags                = local.tags
+}
+
+resource "azurerm_role_assignment" "acr_pull_uami" {
+  scope                = module.container-registry.resource_id
+  role_definition_name = "AcrPull"
+  principal_id         = azurerm_user_assigned_identity.acr_pull.principal_id
+}
+
 # ── Container App – Web frontend ──────────────────────────────────────────────
 
 module "container-app-web" {
@@ -152,23 +167,16 @@ module "container-app-web" {
   registries = [
     {
       server   = module.container-registry.resource.login_server
-      identity = "system"
+      identity = azurerm_user_assigned_identity.acr_pull.id
     }
   ]
 
   managed_identities = {
-    system_assigned = true
+    system_assigned            = true
+    user_assigned_resource_ids = [azurerm_user_assigned_identity.acr_pull.id]
   }
 
-  depends_on = [module.container-apps-environment, module.container-registry, module.container-app-api]
-}
-
-# ── ACR pull role assignment for the Container App identity ───────────────────
-
-resource "azurerm_role_assignment" "acr_pull" {
-  scope                = module.container-registry.resource_id
-  role_definition_name = "AcrPull"
-  principal_id         = module.container-app-web.identity[0].principal_id
+  depends_on = [module.container-apps-environment, module.container-registry, module.container-app-api, azurerm_role_assignment.acr_pull_uami]
 }
 
 # ── Azure OpenAI (Cognitive Services) ─────────────────────────────────────────
@@ -266,21 +274,14 @@ module "container-app-api" {
   registries = [
     {
       server   = module.container-registry.resource.login_server
-      identity = "system"
+      identity = azurerm_user_assigned_identity.acr_pull.id
     }
   ]
 
   managed_identities = {
-    system_assigned = true
+    system_assigned            = true
+    user_assigned_resource_ids = [azurerm_user_assigned_identity.acr_pull.id]
   }
 
-  depends_on = [module.container-apps-environment, module.container-registry, module.openai]
-}
-
-# ── ACR pull role assignment for the API Container App identity ───────────────
-
-resource "azurerm_role_assignment" "acr_pull_api" {
-  scope                = module.container-registry.resource_id
-  role_definition_name = "AcrPull"
-  principal_id         = module.container-app-api.identity[0].principal_id
+  depends_on = [module.container-apps-environment, module.container-registry, module.openai, azurerm_role_assignment.acr_pull_uami]
 }

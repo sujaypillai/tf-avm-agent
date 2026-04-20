@@ -89,7 +89,9 @@ jobs:
                     -target=module.log-analytics-workspace \
                     -target=module.container-registry \
                     -target=module.container-apps-environment \
-                    -target=module.openai
+                    -target=module.openai \
+                    -target=azurerm_user_assigned_identity.acr_pull \
+                    -target=azurerm_role_assignment.acr_pull_uami
 
             - name: Capture Terraform outputs
               id: tf-output
