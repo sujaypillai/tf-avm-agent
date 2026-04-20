@@ -168,7 +168,7 @@ module "container-app-web" {
 resource "azurerm_role_assignment" "acr_pull" {
   scope                = module.container-registry.resource_id
   role_definition_name = "AcrPull"
-  principal_id         = module.container-app-web.identity.principalId
+  principal_id         = module.container-app-web.identity[0].principal_id
 }
 
 # ── Azure OpenAI (Cognitive Services) ─────────────────────────────────────────
@@ -210,7 +210,7 @@ module "openai" {
 resource "azurerm_role_assignment" "api_openai_user" {
   scope                = module.openai.resource_id
   role_definition_name = "Cognitive Services OpenAI User"
-  principal_id         = module.container-app-api.identity.principalId
+  principal_id         = module.container-app-api.identity[0].principal_id
 }
 
 # ── Container App – MCP Backend API ──────────────────────────────────────────
@@ -282,5 +282,5 @@ module "container-app-api" {
 resource "azurerm_role_assignment" "acr_pull_api" {
   scope                = module.container-registry.resource_id
   role_definition_name = "AcrPull"
-  principal_id         = module.container-app-api.identity.principalId
+  principal_id         = module.container-app-api.identity[0].principal_id
 }
