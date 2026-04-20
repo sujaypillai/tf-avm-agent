@@ -98,6 +98,8 @@ module "container-apps-environment" {
     resource_id = module.log-analytics-workspace.resource.id
   }
 
+  zone_redundancy_enabled = false
+
   depends_on = [module.resource-group, module.log-analytics-workspace]
 }
 
