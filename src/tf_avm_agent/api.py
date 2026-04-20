@@ -181,8 +181,7 @@ async def chat(request: ChatRequest):
         agent = get_or_create_session(session_id)
 
         # Run the agent asynchronously
-        loop = asyncio.get_event_loop()
-        response = await loop.run_in_executor(None, agent.run, request.message)
+        response = await agent.run_async(request.message)
 
         return ChatResponse(
             message=response,
@@ -285,8 +284,7 @@ For each service, suggest the appropriate Azure Verified Module (AVM).
 End your response with a clear list of services in this format:
 **Identified Services:** service1, service2, service3, ..."""
 
-            loop = asyncio.get_event_loop()
-            response = await loop.run_in_executor(None, agent.run, prompt)
+            response = await agent.run_async(prompt)
 
             # Parse the response to extract services
             # The agent returns a text response with identified services
@@ -496,8 +494,7 @@ async def websocket_chat(websocket: WebSocket, session: str | None = None):
                 agent = get_or_create_session(session_id)
 
                 # Run the agent
-                loop = asyncio.get_event_loop()
-                response = await loop.run_in_executor(None, agent.run, user_message)
+                response = await agent.run_async(user_message)
 
                 # Send the response in chunks to simulate streaming
                 # In a real implementation, you'd hook into the agent's streaming output
