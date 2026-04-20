@@ -76,6 +76,7 @@ jobs:
                     -backend-config="container_name=${{ vars.BACKEND_CONTAINER }}" \
                     -backend-config="key=terraform.tfstate" \
                     -backend-config="use_oidc=true" \
+                    -backend-config="use_azuread_auth=true" \
                     -backend-config="subscription_id=${{ secrets.AZURE_SUBSCRIPTION_ID }}"
 
             - name: Terraform apply – base infrastructure
@@ -193,6 +194,7 @@ jobs:
                     -backend-config="container_name=${{ vars.BACKEND_CONTAINER }}" \
                     -backend-config="key=terraform.tfstate" \
                     -backend-config="use_oidc=true" \
+                    -backend-config="use_azuread_auth=true" \
                     -backend-config="subscription_id=${{ secrets.AZURE_SUBSCRIPTION_ID }}"
 
             - name: Terraform plan
