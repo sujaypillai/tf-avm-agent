@@ -68,12 +68,13 @@ module "container-registry" {
   source  = "Azure/avm-res-containerregistry-registry/azurerm"
   version = "~> 0.5"
 
-  name                = "cr${replace(local.resource_prefix, "-", "")}web"
-  resource_group_name = module.resource-group.name
-  location            = var.location
-  sku                 = "Basic"
-  admin_enabled       = false
-  tags                = local.tags
+  name                    = "cr${replace(local.resource_prefix, "-", "")}web"
+  resource_group_name     = module.resource-group.name
+  location                = var.location
+  sku                     = "Basic"
+  admin_enabled           = false
+  zone_redundancy_enabled = false
+  tags                    = local.tags
 
   depends_on = [module.resource-group]
 }
@@ -88,6 +89,10 @@ module "container-apps-environment" {
   resource_group_name = module.resource-group.name
   location            = var.location
   tags                = local.tags
+
+  log_analytics_workspace = {
+    resource_id = module.log-analytics-workspace.resource.id
+  }
 
   depends_on = [module.resource-group, module.log-analytics-workspace]
 }
