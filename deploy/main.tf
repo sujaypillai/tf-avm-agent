@@ -23,6 +23,10 @@ provider "azurerm" {
   subscription_id = var.subscription_id
 }
 
+provider "azapi" {
+  subscription_id = var.subscription_id
+}
+
 # ── Locals ───────────────────────────────────────────────────────────────────
 
 locals {
