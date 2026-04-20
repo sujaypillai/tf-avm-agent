@@ -1,208 +1,208 @@
 name: Deploy to Azure Container Apps
 
 on:
-  push:
-    branches: [aca, main]
-    paths:
-      - "deploy/**"
-      - "server/**"
-      - "src/**"
-      - "web/**"
-      - "Dockerfile"
-      - ".github/workflows/deploy.yml"
-  workflow_dispatch:
-    inputs:
-      environment:
-        description: "Target environment"
-        required: true
-        default: "dev"
-        type: choice
-        options:
-          - dev
-          - staging
-          - prod
-      image_tag:
-        description: "Container image tag (defaults to short SHA)"
-        required: false
+    push:
+        branches: [ aca, main ]
+        paths:
+            - "deploy/**"
+            - "server/**"
+            - "src/**"
+            - "web/**"
+            - "Dockerfile"
+            - ".github/workflows/deploy.yml"
+    workflow_dispatch:
+        inputs:
+            environment:
+                description: "Target environment"
+                required: true
+                default: "dev"
+                type: choice
+                options:
+                    - dev
+                    - staging
+                    - prod
+            image_tag:
+                description: "Container image tag (defaults to short SHA)"
+                required: false
 
 permissions:
-  contents: read
-  id-token: write
+    contents: read
+    id-token: write
 
 env:
-  WEB_IMAGE: tf-avm-agent-web
-  API_IMAGE: tf-avm-agent-api
+    WEB_IMAGE: tf-avm-agent-web
+    API_IMAGE: tf-avm-agent-api
 
 jobs:
-  # ── Phase 1: Base infrastructure (everything except Container Apps) ─────────
-  infra:
-    name: Provision base infrastructure
-    runs-on: ubuntu-latest
-    environment: ${{ inputs.environment || 'dev' }}
-    outputs:
-      acr_login_server: ${{ steps.tf-output.outputs.acr_login_server }}
+    # ── Phase 1: Base infrastructure (everything except Container Apps) ─────────
+    infra:
+        name: Provision base infrastructure
+        runs-on: ubuntu-latest
+        environment: ${{ inputs.environment || 'dev' }}
+        outputs:
+            acr_login_server: ${{ steps.tf-output.outputs.acr_login_server }}
 
-    defaults:
-      run:
-        working-directory: deploy
+        defaults:
+            run:
+                working-directory: deploy
 
-    env:
-      ARM_USE_OIDC: "true"
-      ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-      ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-      ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        env:
+            ARM_USE_OIDC: "true"
+            ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+            ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+            ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-    steps:
-      - uses: actions/checkout@v4
+        steps:
+            - uses: actions/checkout@v4
 
-      - name: Log in to Azure
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+            - name: Log in to Azure
+              uses: azure/login@v2
+              with:
+                  client-id: ${{ secrets.AZURE_CLIENT_ID }}
+                  tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+                  subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: "~1.11"
-          terraform_wrapper: false
+            - name: Setup Terraform
+              uses: hashicorp/setup-terraform@v3
+              with:
+                  terraform_version: "~1.11"
+                  terraform_wrapper: false
 
-      - name: Terraform init
-        run: |
-          terraform init \
-            -backend-config="resource_group_name=${{ vars.BACKEND_RG }}" \
-            -backend-config="storage_account_name=${{ vars.BACKEND_SA }}" \
-            -backend-config="container_name=${{ vars.BACKEND_CONTAINER }}" \
-            -backend-config="key=terraform.tfstate" \
-            -backend-config="use_oidc=true" \
-            -backend-config="subscription_id=${{ secrets.AZURE_SUBSCRIPTION_ID }}"
+            - name: Terraform init
+              run: |
+                  terraform init \
+                    -backend-config="resource_group_name=${{ vars.BACKEND_RG }}" \
+                    -backend-config="storage_account_name=${{ vars.BACKEND_SA }}" \
+                    -backend-config="container_name=${{ vars.BACKEND_CONTAINER }}" \
+                    -backend-config="key=terraform.tfstate" \
+                    -backend-config="use_oidc=true" \
+                    -backend-config="subscription_id=${{ secrets.AZURE_SUBSCRIPTION_ID }}"
 
-      - name: Terraform apply – base infrastructure
-        run: |
-          terraform apply -auto-approve \
-            -var="subscription_id=${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
-            -var="environment=${{ inputs.environment || 'dev' }}" \
-            -var="location=${{ vars.AZURE_LOCATION || 'swedencentral' }}" \
-            -target=module.resource-group \
-            -target=module.log-analytics-workspace \
-            -target=module.container-registry \
-            -target=module.container-apps-environment \
-            -target=module.openai
+            - name: Terraform apply – base infrastructure
+              run: |
+                  terraform apply -auto-approve \
+                    -var="subscription_id=${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
+                    -var="environment=${{ inputs.environment || 'dev' }}" \
+                    -var="location=${{ vars.AZURE_LOCATION || 'swedencentral' }}" \
+                    -target=module.resource-group \
+                    -target=module.log-analytics-workspace \
+                    -target=module.container-registry \
+                    -target=module.container-apps-environment \
+                    -target=module.openai
 
-      - name: Capture Terraform outputs
-        id: tf-output
-        run: |
-          echo "acr_login_server=$(terraform output -raw container_registry_login_server)" >> "$GITHUB_OUTPUT"
+            - name: Capture Terraform outputs
+              id: tf-output
+              run: |
+                  echo "acr_login_server=$(terraform output -raw container_registry_login_server)" >> "$GITHUB_OUTPUT"
 
-  # ── Phase 2: Build and push container images ───────────────────────────────
-  build-images:
-    name: Build & push images
-    runs-on: ubuntu-latest
-    needs: infra
-    environment: ${{ inputs.environment || 'dev' }}
-    outputs:
-      image_tag: ${{ steps.meta.outputs.image_tag }}
+    # ── Phase 2: Build and push container images ───────────────────────────────
+    build-images:
+        name: Build & push images
+        runs-on: ubuntu-latest
+        needs: infra
+        environment: ${{ inputs.environment || 'dev' }}
+        outputs:
+            image_tag: ${{ steps.meta.outputs.image_tag }}
 
-    steps:
-      - uses: actions/checkout@v4
+        steps:
+            - uses: actions/checkout@v4
 
-      - name: Set image tag
-        id: meta
-        run: |
-          TAG="${{ inputs.image_tag || github.sha }}"
-          echo "image_tag=${TAG::7}" >> "$GITHUB_OUTPUT"
+            - name: Set image tag
+              id: meta
+              run: |
+                  TAG="${{ inputs.image_tag || github.sha }}"
+                  echo "image_tag=${TAG::7}" >> "$GITHUB_OUTPUT"
 
-      - name: Log in to Azure
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+            - name: Log in to Azure
+              uses: azure/login@v2
+              with:
+                  client-id: ${{ secrets.AZURE_CLIENT_ID }}
+                  tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+                  subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Log in to ACR
-        run: |
-          REGISTRY="${{ needs.infra.outputs.acr_login_server }}"
-          az acr login --name "${REGISTRY%%.*}"
+            - name: Log in to ACR
+              run: |
+                  REGISTRY="${{ needs.infra.outputs.acr_login_server }}"
+                  az acr login --name "${REGISTRY%%.*}"
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+            - name: Set up Docker Buildx
+              uses: docker/setup-buildx-action@v3
 
-      - name: Build & push API image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ./Dockerfile
-          push: true
-          tags: |
-            ${{ needs.infra.outputs.acr_login_server }}/${{ env.API_IMAGE }}:${{ steps.meta.outputs.image_tag }}
-            ${{ needs.infra.outputs.acr_login_server }}/${{ env.API_IMAGE }}:latest
-          cache-from: type=gha,scope=api
-          cache-to: type=gha,scope=api,mode=max
+            - name: Build & push API image
+              uses: docker/build-push-action@v6
+              with:
+                  context: .
+                  file: ./Dockerfile
+                  push: true
+                  tags: |
+                      ${{ needs.infra.outputs.acr_login_server }}/${{ env.API_IMAGE }}:${{ steps.meta.outputs.image_tag }}
+                      ${{ needs.infra.outputs.acr_login_server }}/${{ env.API_IMAGE }}:latest
+                  cache-from: type=gha,scope=api
+                  cache-to: type=gha,scope=api,mode=max
 
-      - name: Build & push Web image
-        uses: docker/build-push-action@v6
-        with:
-          context: ./web
-          file: ./web/Dockerfile
-          push: true
-          tags: |
-            ${{ needs.infra.outputs.acr_login_server }}/${{ env.WEB_IMAGE }}:${{ steps.meta.outputs.image_tag }}
-            ${{ needs.infra.outputs.acr_login_server }}/${{ env.WEB_IMAGE }}:latest
-          cache-from: type=gha,scope=web
-          cache-to: type=gha,scope=web,mode=max
+            - name: Build & push Web image
+              uses: docker/build-push-action@v6
+              with:
+                  context: ./web
+                  file: ./web/Dockerfile
+                  push: true
+                  tags: |
+                      ${{ needs.infra.outputs.acr_login_server }}/${{ env.WEB_IMAGE }}:${{ steps.meta.outputs.image_tag }}
+                      ${{ needs.infra.outputs.acr_login_server }}/${{ env.WEB_IMAGE }}:latest
+                  cache-from: type=gha,scope=web
+                  cache-to: type=gha,scope=web,mode=max
 
-  # ── Phase 3: Full Terraform deploy (Container Apps + RBAC) ─────────────────
-  deploy:
-    name: Deploy full stack
-    runs-on: ubuntu-latest
-    needs: [infra, build-images]
-    environment: ${{ inputs.environment || 'dev' }}
+    # ── Phase 3: Full Terraform deploy (Container Apps + RBAC) ─────────────────
+    deploy:
+        name: Deploy full stack
+        runs-on: ubuntu-latest
+        needs: [ infra, build-images ]
+        environment: ${{ inputs.environment || 'dev' }}
 
-    defaults:
-      run:
-        working-directory: deploy
+        defaults:
+            run:
+                working-directory: deploy
 
-    env:
-      ARM_USE_OIDC: "true"
-      ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-      ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-      ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        env:
+            ARM_USE_OIDC: "true"
+            ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+            ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+            ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-    steps:
-      - uses: actions/checkout@v4
+        steps:
+            - uses: actions/checkout@v4
 
-      - name: Log in to Azure
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+            - name: Log in to Azure
+              uses: azure/login@v2
+              with:
+                  client-id: ${{ secrets.AZURE_CLIENT_ID }}
+                  tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+                  subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: "~1.11"
-          terraform_wrapper: false
+            - name: Setup Terraform
+              uses: hashicorp/setup-terraform@v3
+              with:
+                  terraform_version: "~1.11"
+                  terraform_wrapper: false
 
-      - name: Terraform init
-        run: |
-          terraform init \
-            -backend-config="resource_group_name=${{ vars.BACKEND_RG }}" \
-            -backend-config="storage_account_name=${{ vars.BACKEND_SA }}" \
-            -backend-config="container_name=${{ vars.BACKEND_CONTAINER }}" \
-            -backend-config="key=terraform.tfstate" \
-            -backend-config="use_oidc=true" \
-            -backend-config="subscription_id=${{ secrets.AZURE_SUBSCRIPTION_ID }}"
+            - name: Terraform init
+              run: |
+                  terraform init \
+                    -backend-config="resource_group_name=${{ vars.BACKEND_RG }}" \
+                    -backend-config="storage_account_name=${{ vars.BACKEND_SA }}" \
+                    -backend-config="container_name=${{ vars.BACKEND_CONTAINER }}" \
+                    -backend-config="key=terraform.tfstate" \
+                    -backend-config="use_oidc=true" \
+                    -backend-config="subscription_id=${{ secrets.AZURE_SUBSCRIPTION_ID }}"
 
-      - name: Terraform plan
-        run: |
-          terraform plan \
-            -var="subscription_id=${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
-            -var="environment=${{ inputs.environment || 'dev' }}" \
-            -var="location=${{ vars.AZURE_LOCATION || 'swedencentral' }}" \
-            -var="image_tag=${{ needs.build-images.outputs.image_tag }}" \
-            -out=tfplan
+            - name: Terraform plan
+              run: |
+                  terraform plan \
+                    -var="subscription_id=${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
+                    -var="environment=${{ inputs.environment || 'dev' }}" \
+                    -var="location=${{ vars.AZURE_LOCATION || 'swedencentral' }}" \
+                    -var="image_tag=${{ needs.build-images.outputs.image_tag }}" \
+                    -out=tfplan
 
-      - name: Terraform apply
-        run: terraform apply -auto-approve tfplan
+            - name: Terraform apply
+              run: terraform apply -auto-approve tfplan
