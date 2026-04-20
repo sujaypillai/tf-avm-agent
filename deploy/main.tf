@@ -160,10 +160,6 @@ resource "azurerm_role_assignment" "acr_pull" {
   principal_id         = module.container-app-web.system_assigned_mi_principal_id
 }
 
-# ── Data Sources ──────────────────────────────────────────────────────────────
-
-data "azurerm_client_config" "current" {}
-
 # ── Azure OpenAI (Cognitive Services) ─────────────────────────────────────────
 
 module "openai" {
@@ -177,6 +173,8 @@ module "openai" {
   sku_name              = "S0"
   custom_subdomain_name = "oai-${local.resource_prefix}"
   tags                  = local.tags
+
+  local_auth_enabled = false # Use managed identity (Entra ID) only
 
   cognitive_deployments = {
     "gpt-4o" = {
@@ -196,53 +194,11 @@ module "openai" {
   depends_on = [module.resource-group]
 }
 
-# ── Key Vault ─────────────────────────────────────────────────────────────────
+# ── OpenAI RBAC for API Container App ─────────────────────────────────────────
 
-module "key-vault" {
-  source  = "Azure/avm-res-keyvault-vault/azurerm"
-  version = "~> 0.10"
-
-  name                = "kv-${local.resource_prefix}"
-  location            = var.location
-  resource_group_name = module.resource-group.name
-  tenant_id           = data.azurerm_client_config.current.tenant_id
-  sku_name            = "standard"
-  tags                = local.tags
-
-  # Allow the deployer to manage secrets
-  role_assignments = {
-    deployer = {
-      role_definition_id_or_name = "Key Vault Secrets Officer"
-      principal_id               = data.azurerm_client_config.current.object_id
-      principal_type             = "User"
-    }
-  }
-
-  secrets = {
-    openai-api-key = {
-      name = "openai-api-key"
-    }
-  }
-
-  secrets_value = {
-    openai-api-key = module.openai.primary_access_key
-  }
-
-  # Allow KV to be created before secrets are written
-  wait_for_rbac_before_secret_operations = {
-    create = "60s"
-  }
-
-  network_acls = null # No firewall — accessible from Container Apps
-
-  depends_on = [module.resource-group, module.openai]
-}
-
-# ── Key Vault access for API Container App ────────────────────────────────────
-
-resource "azurerm_role_assignment" "api_kv_secrets_user" {
-  scope                = module.key-vault.resource_id
-  role_definition_name = "Key Vault Secrets User"
+resource "azurerm_role_assignment" "api_openai_user" {
+  scope                = module.openai.resource_id
+  role_definition_name = "Cognitive Services OpenAI User"
   principal_id         = module.container-app-api.system_assigned_mi_principal_id
 }
 
@@ -274,10 +230,6 @@ module "container-app-api" {
           {
             name  = "AZURE_OPENAI_DEPLOYMENT"
             value = var.openai_deployment_name
-          },
-          {
-            name        = "AZURE_OPENAI_API_KEY"
-            secret_name = "openai-api-key"
           }
         ]
       }
@@ -300,14 +252,6 @@ module "container-app-api" {
     ]
   }
 
-  secrets = [
-    {
-      name                = "openai-api-key"
-      key_vault_secret_id = module.key-vault.secrets["openai-api-key"].versionless_id
-      identity            = "system"
-    }
-  ]
-
   registries = [
     {
       server   = module.container-registry.login_server
@@ -319,7 +263,7 @@ module "container-app-api" {
     type = "SystemAssigned"
   }
 
-  depends_on = [module.container-apps-environment, module.container-registry, module.key-vault]
+  depends_on = [module.container-apps-environment, module.container-registry, module.openai]
 }
 
 # ── ACR pull role assignment for the API Container App identity ───────────────

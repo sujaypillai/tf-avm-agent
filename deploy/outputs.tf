@@ -57,14 +57,4 @@ output "openai_resource_id" {
   value       = module.openai.resource_id
 }
 
-# ── Key Vault ────────────────────────────────────────────────────────────────
 
-output "key_vault_uri" {
-  description = "URI of the Key Vault."
-  value       = module.key-vault.uri
-}
-
-output "key_vault_resource_id" {
-  description = "Resource ID of the Key Vault."
-  value       = module.key-vault.resource_id
-}
