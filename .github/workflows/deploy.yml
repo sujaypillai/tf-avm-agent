@@ -82,7 +82,7 @@ jobs:
             - name: Terraform apply – base infrastructure
               run: |
                   terraform apply -auto-approve \
-                    -var="subscription_id=${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
+                    -var="subscription_id=${{ vars.DEPLOY_SUBSCRIPTION_ID }}" \
                     -var="environment=${{ inputs.environment || 'dev' }}" \
                     -var="location=${{ vars.AZURE_LOCATION || 'swedencentral' }}" \
                     -target=module.resource-group \
@@ -200,7 +200,7 @@ jobs:
             - name: Terraform plan
               run: |
                   terraform plan \
-                    -var="subscription_id=${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
+                    -var="subscription_id=${{ vars.DEPLOY_SUBSCRIPTION_ID }}" \
                     -var="environment=${{ inputs.environment || 'dev' }}" \
                     -var="location=${{ vars.AZURE_LOCATION || 'swedencentral' }}" \
                     -var="image_tag=${{ needs.build-images.outputs.image_tag }}" \
