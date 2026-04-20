@@ -141,7 +141,7 @@ module "container-app-web" {
         env = [
           {
             name  = "BACKEND_URL"
-            value = module.container-app-api.fqdn_url
+            value = trimprefix(module.container-app-api.fqdn_url, "https://")
           }
         ]
       }
