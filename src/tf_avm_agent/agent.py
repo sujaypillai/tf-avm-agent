@@ -267,7 +267,7 @@ class TerraformAVMAgent:
             chat_client = OpenAIChatClient(api_key=self.api_key)
 
         return Agent(
-            chat_client=chat_client,
+            client=chat_client,
             instructions=AGENT_SYSTEM_PROMPT,
             tools=self._get_tools(),
         )
